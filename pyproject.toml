@@ -1,0 +1,45 @@
+[project]
+name = "dscache"
+version = "0.1.0"
+description = "A prefix-cache profit-and-loss layer for DeepSeek coding agents — see when you bust the context-cache discount and how much it cost."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "SuperMarioYL" }]
+keywords = ["deepseek", "prefix-cache", "llm", "agent", "cost", "observability"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Libraries",
+    "Environment :: Console",
+]
+dependencies = [
+    "httpx>=0.27,<0.28",
+    "rich>=13.7,<14",
+    "typer>=0.12,<0.13",
+    # typer 0.12.x calls click's pre-8.2 make_metavar() signature; cap click so
+    # `--help` doesn't crash on newer click. Transitive pin, not a new feature dep.
+    "click>=8.1,<8.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/SuperMarioYL/dscache"
+Repository = "https://github.com/SuperMarioYL/dscache"
+Issues = "https://github.com/SuperMarioYL/dscache/issues"
+
+[project.scripts]
+dscache = "dscache.cli:app"
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dscache"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

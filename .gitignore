@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# dscache local ledger
+.dscache/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# agent assistant config
+.claude/
+CLAUDE.md
+
+# build scratch
+PUBLISH_BLOCKED.md
+BUILD_SETUP_NEXT_STEPS.md
+DRIFT_REPORT.md
+.spawn.*
+.builder_*
+.build_metadata*
+.stage_*
