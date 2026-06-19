@@ -5,7 +5,11 @@
 </div>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:7c3aed,100:14b8a6&height=200&section=header&text=dscache&fontSize=72&fontColor=ffffff&desc=DeepSeek%20prefix-cache%20profit%20%26%20loss&descSize=20&descAlignY=72" alt="dscache" width="100%" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg">
+    <img src="./assets/hero-light.svg" width="880" alt="dscache — DeepSeek prefix-cache profit & loss" />
+  </picture>
 </p>
 
 <p align="center"><sub>dscache is the prefix-cache profit-and-loss layer that recovers DeepSeek cache discounts for <b>Coding Agent</b> developers.</sub></p>
@@ -21,34 +25,17 @@
 
 > **Your DeepSeek agent quietly overpays on every loop — one reshuffled prefix and the whole context-cache discount drops from the cached-input price back to full price, and nothing in your tooling tells you. dscache turns that into a visible, priced, fixable profit-and-loss sheet in two lines of code.**
 
-<h2>
-  <img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%237c3aed&width=24" width="24" align="top" />
-  Architecture
-</h2>
+<h2><img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Architecture</h2>
 
-```
-your agent code
-      │  client = dscache.wrap(OpenAI(...))      # pure pass-through, never mutates the request
-      ▼
-┌─────────────┐   reads usage.prompt_cache_hit_tokens / miss_tokens
-│  wrapper.py │ ──────────────────────────────────────────────┐
-└─────────────┘                                                ▼
-                                              .dscache/ledger.jsonl  (local ledger)
-                                                               │
-                                                               ▼
-                                                       ┌─────────────┐
-                                                       │ profiler.py │  per-request HIT/PARTIAL/MISS
-                                                       │             │  + prefix fingerprint + 2-tier pricing
-                                                       └──────┬──────┘
-                                          ┌───────────────────┴──────────────────┐
-                                          ▼                                       ▼
-                                   ┌─────────────┐                        ┌─────────────┐
-                                   │  report.py  │  dscache report        │ reorder.py  │  dscache suggest
-                                   │  P&L + headline                       │  reorder hint │
-                                   └─────────────┘                        └─────────────┘
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
+    <img src="./assets/atlas-light.svg" width="880" alt="Your agent code calls a transparent wrapper that reads DeepSeek cache usage and appends to a local ledger; the profiler classifies each request HIT/PARTIAL/MISS, fingerprints the prefix and prices it at two tiers, then feeds the report (P&L + headline) and the reorder suggester (worst bust)">
+  </picture>
+</p>
 
-A single Python package, one process — no daemon, no server, no network calls of our own. Data flow: your code → `wrapper` → `ledger.jsonl` → `profiler` → (`report` | `reorder`) → terminal.
+A single Python package, one process — no daemon, no server, no network calls of our own. Data flow: your code → `wrapper` (pure pass-through, reads `prompt_cache_hit/miss_tokens`) → `.dscache/ledger.jsonl` → `profiler` (tier + prefix fingerprint + two-tier pricing) → (`report` prints the P&L | `reorder` prints a fix) → terminal.
 
 ## Table of Contents
 
@@ -107,10 +94,7 @@ Then run `dscache report` in your terminal.
 
 </details>
 
-<h2>
-  <img src="https://api.iconify.design/tabler:terminal-2.svg?color=%237c3aed&width=24" width="24" align="top" />
-  Usage
-</h2>
+<h2><img src="https://api.iconify.design/tabler:terminal-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Usage</h2>
 
 Three commands, three workflows. Full script in [`examples/`](./examples/quickstart.py).
 
@@ -133,16 +117,13 @@ client = dscache.wrap(your_deepseek_client)          # transparent proxy, return
 entries = dscache.profile(dscache.load_ledger(path)) # or get structured ledger entries directly
 ```
 
-<h2>
-  <img src="https://api.iconify.design/tabler:photo.svg?color=%237c3aed&width=24" width="24" align="top" />
-  Demo
-</h2>
+<h2><img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo</h2>
 
-The full 30-second script lives in [`assets/demo.cast`](./assets/demo.cast) (asciinema recording) and [`docs/demo.tape`](./docs/demo.tape) (vhs script, rendered to `assets/demo.gif` on tag by CI).
+The full script lives in [`docs/demo.tape`](./docs/demo.tape) (vhs script, rendered to `assets/demo.gif` on tag by CI).
 
 ![demo](assets/demo.gif)
 
-> 📼 The GIF is rendered and committed by `.github/workflows/demo.yml` on the first `v*` tag.
+> The GIF is rendered and committed by `.github/workflows/demo.yml` on the first `v*` tag.
 
 ## vs DeepSeek-Reasonix
 

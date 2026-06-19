@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" width="880" height="360"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif"
+     role="img" aria-label="dscache architecture: your agent code calls a transparent wrapper that reads DeepSeek cache-usage and appends to a local ledger; the profiler classifies each request HIT/PARTIAL/MISS, fingerprints the prefix and prices it at two tiers, feeding the report (P&amp;L + headline) and the reorder suggester (worst bust)">
+  <defs>
+    <marker id="ah-d" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#5A5A66"/></marker>
+  </defs>
+  <rect x="0" y="0" width="880" height="360" fill="#1D1D1F"/>
+
+  <!-- local-only frame: no server, no daemon, no network calls of our own -->
+  <rect x="24" y="58" width="832" height="278" rx="18" fill="none" stroke="#8985FF" stroke-opacity="0.45" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="44" y="48" font-size="13" font-weight="600" fill="#8985FF">single Python package — one process, no daemon, no server, no network calls of our own</text>
+
+  <!-- connectors -->
+  <g stroke="#3A3A44" stroke-width="1.6" fill="none">
+    <!-- agent -> wrapper -->
+    <line x1="200" y1="118" x2="262" y2="118" marker-end="url(#ah-d)"/>
+    <!-- wrapper -> ledger -->
+    <line x1="362" y1="118" x2="438" y2="118" marker-end="url(#ah-d)"/>
+    <!-- ledger -> profiler -->
+    <line x1="510" y1="146" x2="510" y2="196" marker-end="url(#ah-d)"/>
+    <!-- profiler -> report -->
+    <path d="M438 250 C 360 250, 320 250, 262 250" marker-end="url(#ah-d)"/>
+    <!-- profiler -> reorder -->
+    <path d="M582 250 C 660 250, 700 250, 758 250" marker-end="url(#ah-d)"/>
+  </g>
+
+  <!-- Your agent code (input, blue) -->
+  <g>
+    <rect x="40" y="86" width="160" height="64" rx="14" fill="#4DA3FF" fill-opacity="0.16" stroke="#4DA3FF" stroke-width="1.5"/>
+    <text x="120" y="113" text-anchor="middle" font-size="14" font-weight="600" fill="#9CCBFF">your agent code</text>
+    <text x="120" y="132" text-anchor="middle" font-size="10.5" fill="#9CCBFF">dscache.wrap(client)</text>
+  </g>
+
+  <!-- wrapper.py (purple core) -->
+  <g>
+    <rect x="262" y="86" width="100" height="64" rx="14" fill="#8985FF" fill-opacity="0.16" stroke="#8985FF" stroke-width="1.5"/>
+    <text x="312" y="111" text-anchor="middle" font-size="13" font-weight="600" fill="#BBB8FF">wrapper.py</text>
+    <text x="312" y="130" text-anchor="middle" font-size="9.5" fill="#BBB8FF">pure pass-through</text>
+  </g>
+  <text x="400" y="100" text-anchor="middle" font-size="9.5" fill="#A1A1A8">reads usage.prompt_cache</text>
+  <text x="400" y="112" text-anchor="middle" font-size="9.5" fill="#A1A1A8">_hit / _miss_tokens</text>
+
+  <!-- ledger.jsonl (gray store) -->
+  <g>
+    <rect x="438" y="86" width="144" height="56" rx="14" fill="#A1A1A8" fill-opacity="0.14" stroke="#A1A1A8" stroke-width="1.5"/>
+    <text x="510" y="110" text-anchor="middle" font-size="12.5" font-weight="600" fill="#C9C9D0">.dscache/ledger.jsonl</text>
+    <text x="510" y="128" text-anchor="middle" font-size="9.5" fill="#A1A1A8">local append-only ledger</text>
+  </g>
+
+  <!-- profiler.py (purple core, the reusable verb) -->
+  <g>
+    <rect x="438" y="196" width="144" height="92" rx="15" fill="#8985FF" fill-opacity="0.18" stroke="#8985FF" stroke-width="1.6"/>
+    <text x="510" y="220" text-anchor="middle" font-size="14" font-weight="700" fill="#BBB8FF">profiler.py</text>
+    <text x="510" y="240" text-anchor="middle" font-size="10" fill="#BBB8FF">tier HIT / PARTIAL / MISS</text>
+    <text x="510" y="256" text-anchor="middle" font-size="10" fill="#BBB8FF">prefix fingerprint</text>
+    <text x="510" y="272" text-anchor="middle" font-size="10" fill="#BBB8FF">two-tier pricing</text>
+  </g>
+
+  <!-- report.py (green output) -->
+  <g>
+    <rect x="102" y="218" width="160" height="64" rx="14" fill="#2DC79A" fill-opacity="0.10" stroke="#2DC79A" stroke-width="1.5"/>
+    <text x="182" y="244" text-anchor="middle" font-size="13" font-weight="600" fill="#5BE0BC">report.py</text>
+    <text x="182" y="263" text-anchor="middle" font-size="9.5" fill="#5BE0BC">dscache report · P&amp;L + headline</text>
+  </g>
+
+  <!-- reorder.py (green output) -->
+  <g>
+    <rect x="758" y="218" width="122" height="64" rx="14" fill="#2DC79A" fill-opacity="0.10" stroke="#2DC79A" stroke-width="1.5"/>
+    <text x="819" y="244" text-anchor="middle" font-size="13" font-weight="600" fill="#5BE0BC">reorder.py</text>
+    <text x="819" y="263" text-anchor="middle" font-size="9.5" fill="#5BE0BC">dscache suggest</text>
+  </g>
+
+  <!-- terminal labels -->
+  <text x="182" y="304" text-anchor="middle" font-size="10" fill="#A1A1A8">→ your terminal</text>
+  <text x="819" y="304" text-anchor="middle" font-size="10" fill="#A1A1A8">→ worst bust</text>
+</svg>

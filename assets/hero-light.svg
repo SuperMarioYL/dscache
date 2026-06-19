@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif"
+     role="img" aria-label="dscache — a prefix-cache profit-and-loss layer for DeepSeek coding agents">
+  <defs>
+    <linearGradient id="ds-grad-l" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5E5CE6"/>
+      <stop offset="1" stop-color="#10A37F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="880" height="300" fill="#F5F5F7"/>
+
+  <!-- ledger glyph: HIT (green) vs MISS (red) tier marks -->
+  <g transform="translate(96 150)">
+    <rect x="-52" y="-58" width="104" height="116" rx="18" fill="#5E5CE6" fill-opacity="0.10" stroke="#5E5CE6" stroke-width="1.6"/>
+    <rect x="-36" y="-40" width="72" height="16" rx="5" fill="#10A37F" fill-opacity="0.85"/>
+    <rect x="-36" y="-16" width="72" height="16" rx="5" fill="#10A37F" fill-opacity="0.85"/>
+    <rect x="-36" y="8"  width="72" height="16" rx="5" fill="#E5484D" fill-opacity="0.9"/>
+    <rect x="-36" y="32" width="72" height="16" rx="5" fill="#10A37F" fill-opacity="0.85"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="184" y="138" font-size="72" font-weight="800" fill="url(#ds-grad-l)" letter-spacing="-1.5">dscache</text>
+
+  <!-- one-line description -->
+  <text x="186" y="182" font-size="21" font-weight="600" fill="#1D1D1F">DeepSeek prefix-cache 利润表</text>
+  <text x="186" y="214" font-size="15" font-weight="500" fill="#6E6E73">两行代码看清每次请求是命中还是被打爆，把上下文缓存折扣稳稳拿回来。</text>
+
+  <!-- tier legend chips -->
+  <g font-size="12" font-weight="600">
+    <rect x="186" y="236" width="68" height="26" rx="13" fill="#10A37F" fill-opacity="0.12" stroke="#10A37F" stroke-width="1.2"/>
+    <text x="220" y="253" text-anchor="middle" fill="#0B6B53">HIT</text>
+    <rect x="262" y="236" width="92" height="26" rx="13" fill="#F2B705" fill-opacity="0.14" stroke="#F2B705" stroke-width="1.2"/>
+    <text x="308" y="253" text-anchor="middle" fill="#9A7400">PARTIAL</text>
+    <rect x="362" y="236" width="74" height="26" rx="13" fill="#E5484D" fill-opacity="0.12" stroke="#E5484D" stroke-width="1.2"/>
+    <text x="399" y="253" text-anchor="middle" fill="#B42318">MISS</text>
+  </g>
+</svg>
