@@ -88,8 +88,12 @@ def render_headline(entries: Sequence[CacheLedgerEntry]) -> Panel:
     *"This run busted the cache N× and cost X.Yx what it should — ¥Z wasted."*
     """
     busted = sum(1 for e in entries if e.busted_against is not None)
-    total_actual = sum((e.cost_actual for e in entries), Decimal("0"))
-    total_ideal = sum((e.cost_ideal for e in entries), Decimal("0"))
+    # Exclude UNKNOWN-tier requests (DeepSeek omitted the cache split) from the
+    # headline sums — we cannot judge their hit/miss, so they must not fabricate
+    # phantom wasted ¥ (fix fix-unknown-tier-fabricates-wasted-money).
+    judged = [e for e in entries if e.tier is not Tier.UNKNOWN]
+    total_actual = sum((e.cost_actual for e in judged), Decimal("0"))
+    total_ideal = sum((e.cost_ideal for e in judged), Decimal("0"))
     wasted = total_actual - total_ideal
 
     if total_ideal > 0:

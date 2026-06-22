@@ -123,36 +123,81 @@ def _build_record(request_kwargs: dict[str, Any], response: Any) -> Optional[dic
         "prompt_tokens": prompt_tokens if prompt_tokens is not None else 0,
         "cached_tokens": cached_tokens,
         "miss_tokens": miss_tokens,
-        "prefix_sample": _prefix_sample(request_kwargs.get("messages")),
+        "prefix_sample": _prefix_sample(request_kwargs),
     }
 
 
-def _prefix_sample(messages: Any) -> Optional[str]:
-    """Serialize the leading messages into a stable prefix sample.
+def _prefix_sample(request_kwargs: Any) -> Optional[str]:
+    """Serialize the leading request head into a stable prefix sample.
 
-    We concatenate role + content for the system / leading messages up to
-    ``_PREFIX_SAMPLE_CHARS``. This mirrors what the provider's prefix cache keys
-    on (the stable head of the prompt). Returns ``None`` if messages are absent
-    or malformed.
+    DeepSeek's prefix cache keys on the full serialized request head, not just
+    the messages. For coding agents that head is dominated by a large, often
+    *reordered* ``tools`` array — so two calls with identical leading messages
+    but a shuffled tool list have genuinely different cache keys. We therefore
+    serialize ``tools`` / ``tool_choice`` / ``response_format`` *ahead* of the
+    leading message text, then cap at ``_PREFIX_SAMPLE_CHARS``.
+
+    Each segment is emitted on its own ``\\n`` line so :mod:`dscache.attribute`
+    can recover segment granularity (``tools[i]``, ``system``, ``messages[i]``).
+    Returns ``None`` when nothing usable was found.
     """
-    if not isinstance(messages, (list, tuple)):
+    if not isinstance(request_kwargs, dict):
         return None
+
     parts: list[str] = []
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        role = str(msg.get("role", ""))
-        content = msg.get("content", "")
-        if isinstance(content, list):
-            # Multimodal content blocks — keep only text parts.
-            content = "".join(
-                str(block.get("text", "")) for block in content if isinstance(block, dict)
-            )
-        parts.append(f"{role}:{content}")
-        if sum(len(p) for p in parts) >= _PREFIX_SAMPLE_CHARS:
-            break
+
+    # 1. Tool definitions come first — they sit at the head of DeepSeek's real
+    #    cache key, so a reordered tool list must change the fingerprint.
+    tools = request_kwargs.get("tools")
+    if isinstance(tools, (list, tuple)):
+        for i, tool in enumerate(tools):
+            parts.append(f"tools[{i}]:{_serialize_tool(tool)}")
+
+    tool_choice = request_kwargs.get("tool_choice")
+    if tool_choice is not None:
+        parts.append(f"tool_choice:{_serialize_value(tool_choice)}")
+
+    response_format = request_kwargs.get("response_format")
+    if response_format is not None:
+        parts.append(f"response_format:{_serialize_value(response_format)}")
+
+    # 2. Leading messages, after the tool head.
+    messages = request_kwargs.get("messages")
+    if isinstance(messages, (list, tuple)):
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = str(msg.get("role", ""))
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                # Multimodal content blocks — keep only text parts.
+                content = "".join(
+                    str(block.get("text", "")) for block in content if isinstance(block, dict)
+                )
+            parts.append(f"{role}:{content}")
+            if sum(len(p) for p in parts) >= _PREFIX_SAMPLE_CHARS:
+                break
+
     sample = "\n".join(parts)
     return sample[:_PREFIX_SAMPLE_CHARS] if sample else None
+
+
+def _serialize_tool(tool: Any) -> str:
+    """Stably serialize one tool definition for the prefix sample.
+
+    Preserves the tool's *positional* order (we want a reorder to be visible) but
+    serializes each tool's keys sorted, so an equivalent tool block produces an
+    identical string regardless of dict insertion order.
+    """
+    return _serialize_value(tool)
+
+
+def _serialize_value(value: Any) -> str:
+    """Compact, key-sorted JSON serialization; falls back to ``str``."""
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def append_record(ledger_path: str | os.PathLike[str], record: dict[str, Any]) -> None:

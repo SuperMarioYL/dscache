@@ -202,6 +202,11 @@ def profile(records: Iterable[dict[str, Any]]) -> list[CacheLedgerEntry]:
     # Map of fingerprint -> request_id of the first request that established it.
     seen_prefixes: dict[str, str] = {}
     last_request_id: Optional[str] = None
+    # request_id of the most recent request that actually HIT the cache. A bust
+    # should be attributed to the prefix it *should* have reused — the last known
+    # stable prefix — not merely the immediately preceding request, which may
+    # itself be unstable. Falls back to last_request_id when no HIT exists yet.
+    last_hit_request_id: Optional[str] = None
 
     for record in records:
         entry = entry_from_record(record)
@@ -210,22 +215,43 @@ def profile(records: Iterable[dict[str, Any]]) -> list[CacheLedgerEntry]:
         entry.cost_actual, entry.cost_ideal = price_request(
             entry.cached_tokens, entry.miss_tokens, entry.prompt_tokens
         )
+        # UNKNOWN tier = DeepSeek omitted the cache-split fields, so we cannot
+        # judge hit vs miss. price_request still emits a defensive
+        # miss-vs-hit gap; counting that gap as "wasted" fabricates phantom money
+        # on data we admit we cannot judge (fix
+        # fix-unknown-tier-fabricates-wasted-money). Collapse ideal onto actual
+        # so these requests contribute zero waste to the headline.
+        if entry.tier is Tier.UNKNOWN:
+            entry.cost_ideal = entry.cost_actual
+
+        # Prefer the most-recent-HIT as the bust reference (fix
+        # fix-busted-against-wrong-reference-request); fall back to the immediate
+        # neighbor only when no stable prior prefix has been seen.
+        bust_reference = last_hit_request_id or last_request_id
 
         fp = entry.prefix_fingerprint
         if fp is not None:
             if fp in seen_prefixes:
-                # Same stable prefix as before — good, this is a cache-friendly call.
-                pass
+                # The sampled 2048-char head collides with a prior request's. The
+                # sample is only a LOWER BOUND on DeepSeek's real cache key, not
+                # the key itself — so a genuine MISS/PARTIAL here is still a bust,
+                # even though the fingerprint matched (fix
+                # fix-same-fingerprint-miss-not-busted). Attribute it to the
+                # fingerprint's owner (the request that established this prefix).
+                if entry.tier in (Tier.MISS, Tier.PARTIAL):
+                    entry.busted_against = seen_prefixes[fp]
             else:
                 # New prefix. If we had a prior request and this one missed the
-                # cache, mark it as busted against the most recent request so m2
-                # can suggest a reorder back to a stable span.
-                if last_request_id is not None and entry.tier in (Tier.MISS, Tier.PARTIAL):
-                    entry.busted_against = last_request_id
+                # cache, mark it busted against the last stable prefix so reorder
+                # can suggest pinning back to a byte-stable span.
+                if bust_reference is not None and entry.tier in (Tier.MISS, Tier.PARTIAL):
+                    entry.busted_against = bust_reference
                 seen_prefixes[fp] = entry.request_id
 
         entries.append(entry)
         last_request_id = entry.request_id
+        if entry.tier is Tier.HIT:
+            last_hit_request_id = entry.request_id
 
     return entries
 
