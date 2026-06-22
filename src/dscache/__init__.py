@@ -17,6 +17,7 @@ Quickstart::
 
 from __future__ import annotations
 
+from .attribute import SegmentAttribution, attribute_bust
 from .profiler import CacheLedgerEntry, Tier, load_ledger, profile
 from .wrapper import DEFAULT_LEDGER_PATH, wrap
 
@@ -26,8 +27,10 @@ __all__ = [
     "load_ledger",
     "CacheLedgerEntry",
     "Tier",
+    "SegmentAttribution",
+    "attribute_bust",
     "DEFAULT_LEDGER_PATH",
     "__version__",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

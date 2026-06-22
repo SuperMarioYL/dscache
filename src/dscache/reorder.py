@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional, Sequence
 
+from .attribute import SegmentAttribution, attribute_bust
 from .profiler import CacheLedgerEntry, Tier
 
 
@@ -27,6 +28,10 @@ class ReorderSuggestion:
     busted_against: Optional[str]
     wasted: Decimal
     message: str
+    #: Segment-level attribution naming the first diverging prompt segment
+    #: against the most-recent-HIT reference (feat-segment-level-bust-attribution).
+    #: ``None`` only when the busted request's prefix sample was unavailable.
+    attribution: Optional[SegmentAttribution] = None
 
 
 def worst_bust(entries: Sequence[CacheLedgerEntry]) -> Optional[CacheLedgerEntry]:
@@ -47,20 +52,28 @@ def suggest_reorder(entries: Sequence[CacheLedgerEntry]) -> Optional[ReorderSugg
     if target is None:
         return None
 
-    # m1 stub message. m2 will replace this with the computed stable-span
-    # reordering (which leading messages to pin so the prefix stays byte-stable).
     tier_note = {
         Tier.MISS: "completely missed the cache",
         Tier.PARTIAL: "only partially hit the cache",
     }.get(target.tier, "diverged from the cached prefix")
+
+    # Segment-level attribution: diff the busted request head against its
+    # most-recent-HIT reference and name the FIRST diverging segment
+    # (feat-segment-level-bust-attribution). Detect-only — never mutates.
+    reference = _entry_by_id(entries, target.busted_against)
+    attribution = attribute_bust(
+        target._prefix_sample,
+        reference._prefix_sample if reference is not None else None,
+        target.busted_against,
+    )
 
     message = (
         f"Request {target.request_id} {tier_note} — its leading prompt span "
         f"diverged from request {target.busted_against}. Pin the system prompt "
         f"and tool list to the exact byte order used in {target.busted_against} "
         f"(move any per-call dynamic content, e.g. timestamps, below the stable "
-        f"prefix) to recover the cache discount. "
-        f"[full reorder optimizer ships in v0.2 / m2]"
+        f"prefix) to recover the cache discount.\n"
+        f"{attribution.message}"
     )
 
     return ReorderSuggestion(
@@ -68,4 +81,17 @@ def suggest_reorder(entries: Sequence[CacheLedgerEntry]) -> Optional[ReorderSugg
         busted_against=target.busted_against,
         wasted=target.wasted,
         message=message,
+        attribution=attribution,
     )
+
+
+def _entry_by_id(
+    entries: Sequence[CacheLedgerEntry], request_id: Optional[str]
+) -> Optional[CacheLedgerEntry]:
+    """Look up a profiled entry by its request_id, if present."""
+    if request_id is None:
+        return None
+    for e in entries:
+        if e.request_id == request_id:
+            return e
+    return None

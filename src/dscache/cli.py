@@ -68,6 +68,11 @@ def suggest(
         raise typer.Exit()
     console.print(f"[bold red]Worst bust:[/bold red] {suggestion.request_id}")
     console.print(f"[dim]wasted ¥{suggestion.wasted:.4f}[/dim]")
+    if suggestion.attribution is not None and suggestion.attribution.segment is not None:
+        console.print(
+            f"[bold yellow]First diverging segment:[/bold yellow] "
+            f"{suggestion.attribution.segment}"
+        )
     console.print(suggestion.message)
 
 
