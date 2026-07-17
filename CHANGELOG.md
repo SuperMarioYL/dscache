@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.3.0
+
+A correctness pass that closes three residual holes in v0.2.0's own
+sampling, pricing, and attribution paths — the same honesty thesis, extended
+to the cases v0.2.0 left half-fixed — plus one small feature that unblocks the
+before/after-bill writeup the README promised.
+
+### Fixes
+
+- **The prefix sample is capped at segment boundaries, not sliced mid-segment.**
+  `_prefix_sample` enforced the 2048-char budget only inside the messages
+  loop and then did a final `sample[:2048]` slice that could cut a tool block
+  in half. For a coding agent whose tool list dominates the budget (the common
+  case) the sample ended mid-tool — corrupting segment-level attribution with
+  a stub segment — and message text past the tool head was never captured, so
+  two requests with identical tools but a diverged system message got the
+  *same* fingerprint and a real system-message bust was invisible. The budget
+  is now applied incrementally across all segments (tools, `tool_choice`,
+  `response_format`, messages); a segment that would overflow the remaining
+  budget is never appended, so no segment is ever truncated mid-way.
+
+- **`cost_ideal` is based on the full `prompt_tokens`, not `cached + miss`.**
+  The counterfactual `price_request` models is "the entire prompt had stayed
+  cached", and the entire prompt is `prompt_tokens`. DeepSeek documents
+  `prompt_tokens == cached + miss`, but providers surface inconsistent splits
+  in practice; when `cached + miss < prompt_tokens` the old ideal was
+  understated and the headline overstated wasted ¥ — fabricating phantom
+  money on data the user couldn't reconcile against their bill. The ideal now
+  uses `prompt_tokens`; behavior is unchanged when the split is consistent.
+
+- **A bust is never attributed to a MISS or UNKNOWN reference.** A MISS never
+  cached, so it shouldn't register as the owner of a "stable" prefix — yet it
+  did, so a later request with the same sampled head (also a MISS) was busted
+  against an unstable owner and `suggest` told you to pin to a prefix that
+  itself didn't cache. Likewise the no-prior-HIT fallback advanced
+  `last_request_id` on UNKNOWN-tier entries, so a bust could point at a
+  request whose cache split DeepSeek never reported. Only HIT/PARTIAL entries
+  now register as fingerprint owners, and `last_request_id` only advances on
+  judged (non-UNKNOWN) entries.
+
+### Features
+
+- **`dscache report --compare <baseline.jsonl>`** prints the before/after
+  cache-savings delta in one panel. Run your agent loop, apply the prefix-
+  reorder suggestion from `dscache suggest`, re-run, then `dscache report
+  --compare baseline.jsonl` to see the recovered cache-busts, recovered ¥,
+  and the cost-ratio drop — the shareable before/after-bill writeup the
+  README's go-to-market called for, now one command. Honesty-preserving: the
+  panel says "recovered", not "saved" — dscache can't prove you pinned the
+  prefix (you may have changed the prompt or run), so it reports only that the
+  judged requests in the current ledger wasted less ¥ than the baseline.
+
 ## v0.2.0
 
 An honesty-first pass over the profiler. v0.1.0 could call a cache "stable"

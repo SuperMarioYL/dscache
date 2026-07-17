@@ -21,7 +21,7 @@ from rich.console import Console
 from . import __version__
 from .profiler import load_ledger, profile
 from .reorder import suggest_reorder
-from .report import render_report
+from .report import render_compare_delta, render_report
 from .wrapper import DEFAULT_LEDGER_PATH, append_record
 
 app = typer.Typer(
@@ -48,8 +48,31 @@ def report(
     ledger: Path = typer.Option(
         DEFAULT_LEDGER_PATH, "--ledger", "-l", help="Path to the ledger JSONL file."
     ),
+    compare: Optional[Path] = typer.Option(
+        None,
+        "--compare",
+        "-c",
+        help="Baseline ledger JSONL (the run BEFORE you applied a prefix-reorder fix). "
+        "Profiles both and prints the recovered cache-busts / wasted-¥ delta panel.",
+    ),
 ) -> None:
     """Print the per-request cache-tier table and the wasted-money headline."""
+    if compare is not None:
+        # feat feat-report-compare-baseline: print the before/after delta panel
+        # ahead of the per-request table. Empty baseline => a helpful nudge
+        # rather than a silent all-zero panel.
+        if not compare.exists():
+            console.print(
+                f"[yellow]Baseline ledger {compare} not found — run your agent "
+                f"loop once, save the ledger, then pass --compare to see the "
+                f"before/after delta.[/yellow]"
+            )
+        else:
+            baseline = profile(load_ledger(compare))
+            current = profile(load_ledger(ledger))
+            console.print(
+                render_compare_delta(baseline, current, current_label=str(ledger))
+            )
     entries = profile(load_ledger(ledger))
     render_report(entries, console)
 

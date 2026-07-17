@@ -143,6 +143,51 @@ def test_busted_against_falls_back_to_neighbor_when_no_prior_hit():
     assert entries[1].busted_against == "r1"  # neighbor fallback
 
 
+# --- fix-bust-reference-quality-miss-owner-and-unknown-fallback -------------
+
+
+def test_miss_does_not_register_as_fingerprint_owner_when_prior_hit_exists():
+    # r0 HIT (stable prefix STABLE). r1 MISS with a NEW prefix A. r2 MISS with
+    # the SAME prefix A. The old code registered r1 (a MISS) as the owner of A,
+    # so r2's collision busted against r1 — an UNSTABLE reference. The fix
+    # skips registering a MISS, so r2 falls through to the bust_reference path
+    # and is attributed to the prior HIT (r0), the stable reference.
+    records = [
+        {"request_id": "r0", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": "system:STABLE\nuser:a"},
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:AAA\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:AAA\nuser:a"},  # same as r1
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.HIT
+    assert entries[1].tier is Tier.MISS
+    assert entries[2].tier is Tier.MISS
+    # r1 (MISS) is NOT the owner; r2 busts against the prior HIT r0, not r1.
+    assert entries[1].busted_against == "r0"
+    assert entries[2].busted_against == "r0"  # NOT "r1"
+
+
+def test_unknown_does_not_become_last_request_fallback():
+    # r1 UNKNOWN (no cache fields). r2 MISS with a new prefix. The old code
+    # advanced last_request_id on the UNKNOWN entry, so r2's no-prior-HIT
+    # fallback pointed at r1 — a request whose cache split was never reported.
+    # The fix only advances last_request_id on JUDGED entries, so r2 has no
+    # judged neighbor to fall back to and is left un-attributed rather than
+    # pointing at an UNKNOWN.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 4000},  # UNKNOWN, no fields
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:new\nuser:a"},
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.UNKNOWN
+    assert entries[1].tier is Tier.MISS
+    # r2 cannot be attributed to the UNKNOWN r1 — it stays None.
+    assert entries[1].busted_against is None
+
+
 def _render(panel) -> str:
     console = Console(width=120, record=True)
     console.print(panel)

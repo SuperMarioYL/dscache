@@ -157,3 +157,74 @@ def test_attribute_never_mutates_inputs():
     # The request structures are untouched (detect-only).
     assert messages == [{"role": "system", "content": "s"}]
     assert tools[0]["function"]["name"] == "a"
+
+
+# --- fix-prefix-sample-truncates-mid-segment --------------------------------
+
+
+def _big_tool(name: str, size: int) -> dict:
+    """A tool whose serialized form is ~`size` chars (to exercise the budget)."""
+    pad = "x" * max(0, size - 60)
+    return {
+        "type": "function",
+        "function": {"name": name, "description": f"call {name} {pad}", "parameters": {}},
+    }
+
+
+def test_prefix_sample_never_truncates_a_segment_mid_way():
+    # A 2000-char tool fits the 2048 budget; a following 100-char tool does NOT
+    # fit the remaining ~48-char budget. The old code appended every tool and
+    # then did `sample[:2048]`, cutting the second tool mid-segment. The fix
+    # drops the overflow segment whole, so the sample ends at a clean segment
+    # boundary and is <= _PREFIX_SAMPLE_CHARS.
+    from dscache.wrapper import _PREFIX_SAMPLE_CHARS, _prefix_sample
+
+    sample = _prefix_sample(
+        {
+            "messages": [{"role": "system", "content": "hi"}],
+            "tools": [_big_tool("a", 2000), _big_tool("b", 100)],
+        }
+    )
+    assert sample is not None
+    assert len(sample) <= _PREFIX_SAMPLE_CHARS
+    # The first tool is present whole; the second (overflow) is absent; the
+    # message fits the remaining budget and is present whole.
+    assert sample.startswith("tools[0]:")
+    assert "tools[1]" not in sample  # overflow tool dropped, not truncated
+    assert sample.endswith("\nsystem:hi")  # message landed at a clean boundary
+    # No segment is cut mid-way: every line is a complete segment.
+    for line in sample.split("\n"):
+        assert line.startswith(("tools[", "system:"))
+
+
+def test_prefix_sample_oversized_single_tool_falls_back_to_messages():
+    # A single tool too big for the whole budget is skipped entirely (it would
+    # truncate mid-segment), and the message is sampled instead — a faithful
+    # lower bound, never a corrupt stub.
+    from dscache.wrapper import _PREFIX_SAMPLE_CHARS, _prefix_sample
+
+    sample = _prefix_sample(
+        {
+            "messages": [{"role": "system", "content": "stable message"}],
+            "tools": [_big_tool("huge", _PREFIX_SAMPLE_CHARS + 500)],
+        }
+    )
+    assert sample is not None
+    assert "tools[0]" not in sample  # oversized tool dropped whole
+    assert "system:stable message" in sample
+
+
+def test_prefix_sample_message_divergence_visible_when_tools_fit_budget():
+    # Two requests with IDENTICAL small tools but a diverged system message
+    # must produce DIFFERENT fingerprints — the message divergence is not
+    # hidden behind the tool head (the fix keeps the cap at segment boundaries
+    # so messages are sampled when they fit the remaining budget).
+    from dscache.wrapper import _prefix_sample
+
+    msgs_a = [{"role": "system", "content": "prefix A"}]
+    msgs_b = [{"role": "system", "content": "prefix B"}]
+    tools = [_tool("read"), _tool("write")]
+    a = _prefix_sample({"messages": msgs_a, "tools": tools})
+    b = _prefix_sample({"messages": msgs_b, "tools": tools})
+    assert a is not None and b is not None
+    assert a != b  # message divergence visible

@@ -143,8 +143,16 @@ def price_request(
         return _q(actual), _q(ideal)
 
     actual = Decimal(cached_tokens) * hit_rate + Decimal(miss_tokens) * miss_rate
-    total = cached_tokens + miss_tokens
-    ideal = Decimal(total) * hit_rate
+    # cost_ideal is the counterfactual where the ENTIRE prompt had stayed in
+    # the cached tier — that is `prompt_tokens * hit_rate`, NOT
+    # `(cached_tokens + miss_tokens) * hit_rate`. DeepSeek documents
+    # prompt_tokens == cached + miss, but providers surface inconsistent
+    # splits in practice (system tokens not counted in the cache fields,
+    # rounding, mid-stream truncation); basing the ideal on the split sum
+    # would understate it when cached + miss < prompt_tokens and so
+    # fabricate phantom wasted ¥ on the headline (fix
+    # fix-cost-ideal-uses-prompt-tokens-not-split-sum).
+    ideal = Decimal(prompt_tokens) * hit_rate
     return _q(actual), _q(ideal)
 
 
@@ -246,10 +254,24 @@ def profile(records: Iterable[dict[str, Any]]) -> list[CacheLedgerEntry]:
                 # can suggest pinning back to a byte-stable span.
                 if bust_reference is not None and entry.tier in (Tier.MISS, Tier.PARTIAL):
                     entry.busted_against = bust_reference
-                seen_prefixes[fp] = entry.request_id
+                # Register the owner of this fingerprint ONLY when the request
+                # actually cached (HIT or PARTIAL). A MISS never established a
+                # cacheable prefix, so registering it as the owner would make a
+                # later same-fingerprint MISS bust against an UNSTABLE reference
+                # — the exact failure fix-bust-reference-quality closes. A MISS
+                # is simply not recorded, so a later colliding MISS falls through
+                # to the bust_reference path instead.
+                if entry.tier in (Tier.HIT, Tier.PARTIAL):
+                    seen_prefixes[fp] = entry.request_id
 
         entries.append(entry)
-        last_request_id = entry.request_id
+        # Only advance last_request_id for JUDGED entries (HIT/PARTIAL/MISS). A
+        # bust_reference fallback to an UNKNOWN-tier request — one whose cache
+        # split DeepSeek never reported — would attribute a bust to a request we
+        # admit we cannot judge (fix-bust-reference-quality). UNKNOWN entries
+        # are skipped so the fallback always lands on a judged neighbor.
+        if entry.tier is not Tier.UNKNOWN:
+            last_request_id = entry.request_id
         if entry.tier is Tier.HIT:
             last_hit_request_id = entry.request_id
 

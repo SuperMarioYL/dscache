@@ -53,6 +53,22 @@ def test_price_request_degrades_when_split_unknown():
     assert ideal == Decimal("0.000500")  # whole prompt at hit rate
 
 
+def test_price_request_ideal_uses_prompt_tokens_when_split_inconsistent():
+    # fix-cost-ideal-uses-prompt-tokens-not-split-sum: the ideal is the
+    # "entire prompt cached" counterfactual, so it must be prompt_tokens * hit
+    # rate, NOT (cached + miss) * hit rate. Providers surface inconsistent
+    # splits (cached + miss != prompt_tokens); the old code understated the
+    # ideal and fabricated phantom wasted ¥.
+    cached, miss, prompt = 800, 100, 1000  # cached + miss = 900 != 1000
+    actual, ideal = price_request(cached, miss, prompt)
+    # actual: 800 cached at hit + 100 miss at miss rate.
+    assert actual == Decimal("0.000600")  # 800*0.5/1M + 100*2.0/1M
+    # ideal: the FULL 1000-prompt cached, NOT the 900 split sum.
+    assert ideal == Decimal("0.000500")  # 1000 * 0.5 / 1M
+    # And the consistent case is unchanged (split sum == prompt).
+    assert price_request(1000, 1000, 2000)[1] == Decimal("0.001000")
+
+
 def test_entry_from_record_infers_missing_side():
     e = entry_from_record(
         {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 800}

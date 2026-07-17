@@ -139,27 +139,55 @@ def _prefix_sample(request_kwargs: Any) -> Optional[str]:
 
     Each segment is emitted on its own ``\\n`` line so :mod:`dscache.attribute`
     can recover segment granularity (``tools[i]``, ``system``, ``messages[i]``).
+    The cap is applied at SEGMENT BOUNDARIES across all segments: a segment
+    that would overflow the remaining budget is never appended, so no segment
+    is ever truncated mid-way (fix
+    fix-prefix-sample-truncates-mid-segment). This matters for coding agents
+    whose tool list dominates the budget: the sample fills with whole tool
+    blocks up to the cap, and a divergence in a later tool or in the leading
+    message past the tool head is simply not sampled (still a faithful lower
+    bound on the real cache key, as the v0.2.0 honesty caveat already states)
+    rather than corrupting the fingerprint with a half-segment stub.
+
     Returns ``None`` when nothing usable was found.
     """
     if not isinstance(request_kwargs, dict):
         return None
 
     parts: list[str] = []
+    budget = _PREFIX_SAMPLE_CHARS
+
+    def _append(segment: str) -> bool:
+        """Append a segment if it fits the remaining budget; else stop.
+
+        Returns True if the segment was appended, False if the budget is
+        exhausted (caller should stop adding further segments).
+        """
+        nonlocal budget
+        # +1 for the "\n" separator that joins segments.
+        cost = len(segment) + (1 if parts else 0)
+        if cost > budget:
+            return False
+        parts.append(segment)
+        budget -= cost
+        return True
 
     # 1. Tool definitions come first — they sit at the head of DeepSeek's real
     #    cache key, so a reordered tool list must change the fingerprint.
     tools = request_kwargs.get("tools")
     if isinstance(tools, (list, tuple)):
         for i, tool in enumerate(tools):
-            parts.append(f"tools[{i}]:{_serialize_tool(tool)}")
+            seg = f"tools[{i}]:{_serialize_tool(tool)}"
+            if not _append(seg):
+                break
 
     tool_choice = request_kwargs.get("tool_choice")
     if tool_choice is not None:
-        parts.append(f"tool_choice:{_serialize_value(tool_choice)}")
+        _append(f"tool_choice:{_serialize_value(tool_choice)}")
 
     response_format = request_kwargs.get("response_format")
     if response_format is not None:
-        parts.append(f"response_format:{_serialize_value(response_format)}")
+        _append(f"response_format:{_serialize_value(response_format)}")
 
     # 2. Leading messages, after the tool head.
     messages = request_kwargs.get("messages")
@@ -174,12 +202,10 @@ def _prefix_sample(request_kwargs: Any) -> Optional[str]:
                 content = "".join(
                     str(block.get("text", "")) for block in content if isinstance(block, dict)
                 )
-            parts.append(f"{role}:{content}")
-            if sum(len(p) for p in parts) >= _PREFIX_SAMPLE_CHARS:
+            if not _append(f"{role}:{content}"):
                 break
 
-    sample = "\n".join(parts)
-    return sample[:_PREFIX_SAMPLE_CHARS] if sample else None
+    return "\n".join(parts) if parts else None
 
 
 def _serialize_tool(tool: Any) -> str:
