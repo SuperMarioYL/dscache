@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "name": "dscache",
+  "github": "https://github.com/SuperMarioYL/dscache",
+  "host": "dscache.lei6393.com",
+  "lang": { "primary": "zh", "toggle": true },
+  "accent": ["#059669"],
+  "hero": {
+    "eyebrow": {
+      "zh": "回放你的请求日志 · 打爆的前缀看得见 · 不多记一笔冤枉钱 · 改完一键对账",
+      "en": "Replay your request log · See which prefix busted · No phantom money · One-command before/after"
+    },
+    "headline": {
+      "zh": "你的 DeepSeek Agent 每轮循环都在偷偷多花钱\n一段被打爆的前缀，就把整段缓存折扣悄悄掉回原价",
+      "en": "Your DeepSeek agent silently overpays every loop\n— one busted prefix drops a whole cached segment back to full price"
+    },
+    "sub": {
+      "zh": "dscache 回放你的请求日志，读 DeepSeek 真正上报的缓存命中与未命中，逐请求定档 HIT/PARTIAL/MISS，把每一次前缀打爆和它漏掉的人民币变成一张能看、能算、能修的利润表。采样在段边界裁切——永远不会把一个工具块切成两半；打爆只归因到真正命中过的前缀，绝不甩锅给 MISS；改完用 dscache report --compare baseline.jsonl 一张面板看到省回了多少。给跑 DeepSeek Agent 循环、却在账单里找不到那笔超支的人。",
+      "en": "dscache replays your request log, reads the cache hit and miss tokens DeepSeek actually reports, and tiers each request HIT/PARTIAL/MISS — turning every prefix bust and the CNY it leaks into a profit & loss you can read, price, and fix. The sample is cut at segment boundaries — it never slices a tool block in half; a bust is pinned only to a prefix that actually cached, never to a MISS; and after you fix it, dscache report --compare baseline.jsonl shows the CNY recovered in one panel. For anyone running a DeepSeek agent loop who can't find that overspend on their bill."
+    },
+    "command": "dscache report",
+    "cta": { "zh": "开始使用", "en": "Get started" },
+    "ctaGithub": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
+  },
+  "advantages": [
+    {
+      "title": { "zh": "采样在段边界裁切，不把工具块切成两半", "en": "Sampled at segment boundaries — never slices a tool block in half" },
+      "body": {
+        "zh": "前缀指纹的字符预算以前只在消息循环里管，最后再来一刀截断——对一个工具列表占满预算的编码 Agent，采样正好停在一个工具块中间，段级归因拿到一截残段；两个工具相同但系统消息不同的请求还拿到同一个指纹，真正的系统消息打爆根本看不见。现在预算跨所有段（工具、工具选择、响应格式、消息）增量推进，会溢出剩余预算的段直接不追加，没有任何段会被从中间截断。",
+        "en": "The prefix-fingerprint char budget used to be enforced only inside the messages loop, then a final truncating slice — for a coding agent whose tool list eats the whole budget, the sample landed mid-tool and segment attribution got a stub; two requests with identical tools but a diverged system message got the same fingerprint, so a real system-message bust was invisible. The budget now advances incrementally across every segment (tools, tool_choice, response_format, messages) — a segment that would overflow the remaining budget is never appended, so no segment is ever cut in half."
+      },
+      "chips": [
+        "› 段边界增量裁切",
+        "› 工具块不再被截断",
+        "› 系统消息打爆看得见"
+      ]
+    },
+    {
+      "title": { "zh": "理想花费按完整 prompt 算，不凭空多记冤枉钱", "en": "Ideal cost uses the full prompt — no phantom money" },
+      "body": {
+        "zh": "反事实假设是「整段 prompt 当初都命中缓存」，而整段 prompt 就是 DeepSeek 上报的整段 prompt 长度。文档说它等于命中加未命中，但实际上报的拆分并不总一致——当两者之和小于整段长度时，旧理想值被低估，头条就夸大你浪费的 ¥，凭空造出账单上对不上的钱。理想值现在直接用整段 prompt 的长度；拆分一致时行为不变，不一致时不再凭空生钱。",
+        "en": "The counterfactual is 'the entire prompt had stayed cached', and the entire prompt is the full prompt length DeepSeek reports. Docs say it equals cached plus miss, but the surfaced split isn't always consistent — when the two sum to less than the full length, the old ideal was understated and the headline overstated your wasted ¥, fabricating money you couldn't reconcile against your bill. The ideal now uses the full prompt length directly; behavior is unchanged when the split is consistent, and it no longer fabricates money when it isn't."
+      },
+      "chips": [
+        "› 理想值用完整 prompt",
+        "› 不再夸大浪费 ¥",
+        "› 账单对得上"
+      ]
+    },
+    {
+      "title": { "zh": "打爆只归因到真正命中过的前缀，不甩锅给 MISS", "en": "A bust is pinned to a prefix that actually cached — never to a MISS" },
+      "body": {
+        "zh": "一个 MISS 本就没缓存过，它不该当一个「稳定前缀」的主人——可旧逻辑让它注册成了主人，于是后面一条采样头相同的请求（也是 MISS）就被对一个不稳定的主人判了打爆，重排建议还让你去钉一个自己都不缓存的前缀。现在只有 HIT/PARTIAL 才注册为指纹主人，游标只在可判定的条目上推进——打爆指向的永远是真正缓存过的那一条，建议也就不会再指错。",
+        "en": "A MISS never cached, so it shouldn't register as the owner of a 'stable' prefix — yet it did, so a later request with the same sampled head (also a MISS) was busted against an unstable owner, and the reorder suggestion told you to pin to a prefix that itself didn't cache. Now only HIT/PARTIAL entries register as fingerprint owners, and the cursor advances only on judged entries — a bust always points back to a request that actually cached, so the suggestion never points you wrong."
+      },
+      "chips": [
+        "› 只 HIT/PARTIAL 当主人",
+        "› MISS 不再背锅",
+        "› 重排建议不指错"
+      ]
+    },
+    {
+      "title": { "zh": "改完一键对账：省回了多少打爆、多少 ¥", "en": "One-command before/after: busts recovered, CNY recovered" },
+      "body": {
+        "zh": "跑一轮 Agent 循环，照重排建议改完前缀，再跑一轮，然后 dscache report --compare baseline.jsonl 一张面板看到省回的打爆次数、省回的 ¥、成本比下降。这是那张可分享的「前后账单」对比，现在一条命令。诚实保留：面板写的是「省回」不是「省下」——dscache 没法证明你真的钉住了前缀（你可能改了 prompt 或重跑），它只报告当前账本里被判定为打爆的请求比基线少浪费了多少 ¥。",
+        "en": "Run your agent loop, apply the reorder suggestion to fix the prefix, re-run, then dscache report --compare baseline.jsonl — one panel shows the recovered busts, recovered ¥, and cost-ratio drop. It's the shareable before/after-bill writeup, now one command. Honesty-preserving: the panel says 'recovered', not 'saved' — dscache can't prove you pinned the prefix (you may have changed the prompt or re-run); it reports only that the judged requests in the current ledger wasted less ¥ than the baseline."
+      },
+      "chips": [
+        "› dscache report --compare",
+        "› 省回打爆 / 省回 ¥",
+        "› 写省回 不写省下"
+      ]
+    }
+  ],
+  "scene": {
+    "kind": "hub-nodes",
+    "nodes": ["注入的时间戳", "重排的工具列表", "掉回原价", "对不上的 ¥"]
+  },
+  "cta": {
+    "headline": {
+      "zh": "两行代码，把被打爆的缓存折扣拿回来",
+      "en": "Two lines of code, recover the cache discount you busted"
+    },
+    "sub": {
+      "zh": "开源、MIT、无付费墙。本地账本，不挂后台，不联网取价。给 DeepSeek Agent 装一张 prefix-cache 利润表这件事，永不收费。",
+      "en": "Open source, MIT, no paywall. Local ledger, no background process, no price fetched over the network. The act of putting a prefix-cache P&L on your DeepSeek agent is never gated."
+    },
+    "button": { "zh": "在 GitHub 上开始", "en": "Get started on GitHub" }
+  },
+  "footer": {
+    "tag": {
+      "zh": "给 DeepSeek Agent 装的 prefix-cache 利润表",
+      "en": "The prefix-cache profit & loss for your DeepSeek agent"
+    }
+  }
+}
