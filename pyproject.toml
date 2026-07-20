@@ -4,12 +4,12 @@ version = "0.3.0"
 description = "A prefix-cache profit-and-loss layer for DeepSeek coding agents — see when you bust the context-cache discount and how much it cost."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "SuperMarioYL" }]
 keywords = ["deepseek", "prefix-cache", "llm", "agent", "cost", "observability"]
 classifiers = [
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Topic :: Software Development :: Libraries",
     "Environment :: Console",
 ]
