@@ -15,7 +15,7 @@
 <p align="center"><sub>给你的 DeepSeek <b>Agent</b> 装一张 prefix-cache 利润表，把被打爆的上下文缓存折扣稳稳拿回来。</sub></p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="license" /></a>
   <img src="https://img.shields.io/badge/release-WIP-orange.svg" alt="release" />
   <a href="https://github.com/SuperMarioYL/dscache/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-ci.yml-brightgreen.svg" alt="ci" /></a>
   <img src="https://img.shields.io/badge/python-3.12-3776AB.svg?logo=python&logoColor=white" alt="python" />
