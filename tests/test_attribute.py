@@ -33,8 +33,11 @@ def test_prefix_sample_includes_tools():
     assert sample is not None
     assert "tools[0]" in sample
     assert "tools[1]" in sample
-    # Tools are serialized AHEAD of the message text.
-    assert sample.index("tools[0]") < sample.index("system:You are an agent.")
+    # Tools are serialized AHEAD of the message text. Message content is now
+    # json-quoted (fix fix-multiline-content-breaks-segment-attribution), so the
+    # system segment reads `system:"You are an agent."`.
+    assert sample.index("tools[0]") < sample.index("system:")
+    assert '"You are an agent."' in sample
 
 
 def test_reordered_tools_change_the_sample():
@@ -191,7 +194,9 @@ def test_prefix_sample_never_truncates_a_segment_mid_way():
     # message fits the remaining budget and is present whole.
     assert sample.startswith("tools[0]:")
     assert "tools[1]" not in sample  # overflow tool dropped, not truncated
-    assert sample.endswith("\nsystem:hi")  # message landed at a clean boundary
+    # Message content is json-quoted (fix
+    # fix-multiline-content-breaks-segment-attribution) -> `system:"hi"`.
+    assert sample.endswith('\nsystem:"hi"')  # message landed at a clean boundary
     # No segment is cut mid-way: every line is a complete segment.
     for line in sample.split("\n"):
         assert line.startswith(("tools[", "system:"))
@@ -211,7 +216,7 @@ def test_prefix_sample_oversized_single_tool_falls_back_to_messages():
     )
     assert sample is not None
     assert "tools[0]" not in sample  # oversized tool dropped whole
-    assert "system:stable message" in sample
+    assert 'system:"stable message"' in sample  # json-quoted content (fix-multiline)
 
 
 def test_prefix_sample_message_divergence_visible_when_tools_fit_budget():
@@ -228,3 +233,66 @@ def test_prefix_sample_message_divergence_visible_when_tools_fit_budget():
     b = _prefix_sample({"messages": msgs_b, "tools": tools})
     assert a is not None and b is not None
     assert a != b  # message divergence visible
+
+
+# --- fix-multiline-content-breaks-segment-attribution ----------------------
+
+
+def test_multiline_content_does_not_shatter_segment_attribution():
+    # _prefix_sample joins segments with "\n" and attribute._split_segments
+    # splits on "\n"; the wrapper used to embed message content RAW, so a
+    # system/user prompt with a literal "\n" (the common coding-agent case)
+    # was shattered into N spurious "segment[K]" labels and attribute_bust
+    # reported a meaningless stable_through instead of naming the message that
+    # diverged. Reproduced: "Rules:\n1. Do X" vs "...1. Do Y" yielded
+    # segment="segment[1]", stable_through="segments[0..0]". The fix
+    # serializes content via _serialize_value (json.dumps, which escapes "\n")
+    # so "\n" is an unambiguous separator and the diverging segment labels the
+    # system message, not "segment[K]" (fix
+    # fix-multiline-content-breaks-segment-attribution).
+    ref = _prefix_sample(
+        {"messages": [{"role": "system", "content": "Rules:\n1. Do X\n2. Do Z"}]}
+    )
+    busted = _prefix_sample(
+        {"messages": [{"role": "system", "content": "Rules:\n1. Do Y\n2. Do Z"}]}
+    )
+    assert ref is not None and busted is not None
+    # The whole multi-line system message is ONE segment — no embedded "\n" to
+    # shatter the split. (Under the old raw-content code both samples contained
+    # literal "\n" and split into 3 spurious segments.)
+    assert "\n" not in ref
+    assert "\n" not in busted
+    attribution = attribute_bust(busted, ref, "r17")
+    assert attribution.diverged
+    # The diverging segment names the system message, not an opaque
+    # "segment[K]" label — the advertised "which message index" granularity is
+    # preserved on every real multi-line coding-agent prompt.
+    assert "system" in attribution.segment
+    assert not attribution.segment.startswith("segment[")
+    assert "r17" in attribution.message
+
+
+def test_multiline_content_attribution_end_to_end_via_profile():
+    # End-to-end: two profiled requests share the stable head but the second
+    # busts the cache with a diverged multi-line system message. suggest_reorder
+    # surfaces an attribution that names the system message (not "segment[K]"),
+    # proving the fix holds through the wrapper -> profiler -> reorder path.
+    from dscache.reorder import suggest_reorder
+
+    s_stable = _prefix_sample(
+        {"messages": [{"role": "system", "content": "Rules:\n1. Do X\n2. Do Z"}]}
+    )
+    s_busted = _prefix_sample(
+        {"messages": [{"role": "system", "content": "Rules:\n1. Do Y\n2. Do Z"}]}
+    )
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": s_stable},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": s_busted},
+    ]
+    suggestion = suggest_reorder(profile(records))
+    assert suggestion is not None
+    assert suggestion.attribution is not None
+    assert "system" in suggestion.attribution.segment
+    assert not suggestion.attribution.segment.startswith("segment[")

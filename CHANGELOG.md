@@ -1,5 +1,63 @@
 # Changelog
 
+## v0.4.0
+
+A bug-hunt + git-sync pass. Two `type:fix` folded from bug-hunter HIGH
+findings close the asymmetry the v0.3.0 ideal fix introduced and restore
+segment attribution on real multi-line prompts; the license spec is
+reconciled with the shipped Apache 2.0 repo; the post-ship GitHub Pages
+product site is codified as a distribution channel.
+
+### Fixes
+
+- **`cost_actual` prices the unaccounted split gap, so a MISS can't show
+  negative waste.** v0.3.0's `cost_ideal` fix raised the ideal to the full
+  `prompt_tokens * hit`, but left `cost_actual` pricing only `cached + miss` —
+  so when the provider's split was inconsistent (`cached + miss <
+  prompt_tokens`, the exact case the v0.3.0 docstring says happens "in
+  practice") the gap tokens (`prompt − cached − miss`) were free and a cache
+  MISS could render *cheaper than ideal*: reproduced `wasted = −0.000045` on a
+  tier=MISS (`cached=10, miss=100, prompt=500`), and that negative per-request
+  waste then subtracted from the headline's total `¥Z wasted`, understating the
+  central number. `price_request` now prices the gap
+  (`max(prompt − cached − miss, 0)`) at the miss rate inside `cost_actual`, so
+  `cost_actual ≥ cost_ideal` always and a MISS never shows negative waste; the
+  consistent-split case (`gap=0`) is unchanged.
+
+- **Multi-line message content no longer shatters segment attribution.**
+  `_prefix_sample` joins segments with `"\n"` and `attribute._split_segments`
+  recovers them by splitting on `"\n"`, but the message loop embedded content
+  *raw* — so any system/user prompt with a literal `"\n"` (the common
+  coding-agent case) was shattered into N spurious `segment[K]` labels and
+  `attribute_bust` reported a meaningless `stable_through` instead of naming
+  the diverging message. Reproduced: `"Rules:\n1. Do X"` vs `"...1. Do Y"`
+  yielded `segment="segment[1]"` instead of naming the system message. Message
+  content is now serialized via the same `_serialize_value` (`json.dumps`)
+  path already used for tools — which escapes `"\n"` — so `"\n"` is an
+  unambiguous separator and the diverging segment labels the message, not
+  `segment[K]` (tool blocks were already safe via `json.dumps`). This is a
+  fingerprint-format bump, accepted as a v0.4.0 ledger-contract change (the
+  sampled prefix is per-run and never persisted verbatim).
+
+### Other
+
+- **License spec reconciled with the shipped Apache 2.0 repo.** The v0.3.0
+  plan's `readme_spec.footer` still exampled `MIT`; the shipped repo adopted
+  Apache 2.0. The footer, badge, and LICENSE/pyproject license field now read
+  Apache-2.0 to match.
+- **GitHub Pages product site codified as a distribution channel** — a static
+  marketing surface that mirrors the before/after-bill headline, explicitly
+  *not* the out-of-scope hosted dashboard or SaaS backend. No new feature
+  scope.
+
+### Deferred
+
+- **`render_compare_delta` can print a negative "new bust(s)" count** and label
+  a bust-reducing run as "Cache got WORSE". The defect is real and reproduced
+  but is confidence:medium with no filed issue corroborating it, so it is
+  deferred per the proposer charter's confidence gate; re-file it as an issue
+  and it becomes a v0.4.1 / v0.5.0 fix.
+
 ## v0.3.0
 
 A correctness pass that closes three residual holes in v0.2.0's own

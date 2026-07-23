@@ -188,6 +188,59 @@ def test_unknown_does_not_become_last_request_fallback():
     assert entries[1].busted_against is None
 
 
+# --- fix-cost-actual-drops-split-gap-tokens ---------------------------------
+
+
+def test_miss_with_inconsistent_split_never_negative_waste():
+    # The v0.3.0 cost_ideal fix raised the ideal to prompt_tokens*hit but left
+    # cost_actual pricing ONLY cached+miss, so when the provider's split was
+    # inconsistent (cached+miss < prompt_tokens) the unaccounted gap was free
+    # and a cache MISS could render NEGATIVE waste — "cheaper than ideal" —
+    # which then subtracted from the headline's total wasted ¥. Reproduced
+    # wasted = -0.000045 on a tier=MISS (cached=10, miss=100, prompt=500). The
+    # fix prices the gap (prompt−cached−miss) at the miss rate inside
+    # cost_actual so cost_actual ≥ cost_ideal always (fix
+    # fix-cost-actual-drops-split-gap-tokens); the consistent-split case is
+    # unchanged.
+    from dscache.profiler import price_request
+
+    cached, miss, prompt = 10, 100, 500  # cached + miss = 110 < 500
+    actual, ideal = price_request(cached, miss, prompt)
+    # cost_actual is never below the prompt-based cost_ideal — a MISS can no
+    # longer show negative waste.
+    assert actual >= ideal
+    assert actual - ideal >= Decimal("0")
+    # Exact figures: gap=390 priced at the miss rate on top of cached+miss.
+    assert actual == Decimal("0.000985")  # 10*0.5/1M + 100*2/1M + 390*2/1M
+    assert ideal == Decimal("0.000250")  # 500 * 0.5 / 1M
+    # The v0.3.0 code priced only cached+miss (0.000205) and so rendered
+    # wasted = 0.000205 - 0.000250 = -0.000045 — the exact negative the fix
+    # removes.
+    assert Decimal("0.000205") - ideal < Decimal("0")
+
+
+def test_headline_miss_with_inconsistent_split_never_negative():
+    # The negative per-request waste used to subtract from the headline's total,
+    # understating the central "busted N×, cost X.Yx, ¥Z wasted" number. A run
+    # whose only judged request is such a MISS must show a NON-negative headline
+    # total — no negative waste to subtract.
+    from dscache.report import _headline_numbers
+
+    records = [
+        {"request_id": "r1", "prompt_tokens": 500, "cached_tokens": 10,
+         "miss_tokens": 100, "prefix_sample": "system:a\nuser:b"},
+    ]
+    entries = profile(records)
+    e = entries[0]
+    assert e.tier is Tier.MISS
+    assert e.wasted >= Decimal("0")  # per-request waste never negative
+    assert e.cost_actual >= e.cost_ideal
+    # Headline total wasted is non-negative (no negative per-request waste to
+    # subtract from the headline).
+    nums = _headline_numbers(entries)
+    assert nums["wasted"] >= Decimal("0")
+
+
 def _render(panel) -> str:
     console = Console(width=120, record=True)
     console.print(panel)

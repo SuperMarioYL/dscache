@@ -1,6 +1,6 @@
 [project]
 name = "dscache"
-version = "0.3.0"
+version = "0.4.0"
 description = "A prefix-cache profit-and-loss layer for DeepSeek coding agents — see when you bust the context-cache discount and how much it cost."
 readme = "README.md"
 requires-python = ">=3.12"

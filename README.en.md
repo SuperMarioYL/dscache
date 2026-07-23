@@ -15,7 +15,7 @@
 <p align="center"><sub>dscache is the prefix-cache profit-and-loss layer that recovers DeepSeek cache discounts for <b>Coding Agent</b> developers.</sub></p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="license" /></a>
   <img src="https://img.shields.io/badge/release-WIP-orange.svg" alt="release" />
   <a href="https://github.com/SuperMarioYL/dscache/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-ci.yml-brightgreen.svg" alt="ci" /></a>
   <img src="https://img.shields.io/badge/python-3.12-3776AB.svg?logo=python&logoColor=white" alt="python" />
@@ -167,7 +167,7 @@ The price sits below the ¥-saved the report demonstrates, so it justifies itsel
 
 ## License & Contributing
 
-[MIT](./LICENSE) licensed. File an issue with a real wasted-money number from one of your runs, or open a PR — especially for new two-tier pricing calibrations and reorder strategies.
+[Apache-2.0](./LICENSE) licensed. File an issue with a real wasted-money number from one of your runs, or open a PR — especially for new two-tier pricing calibrations and reorder strategies.
 
 ## Share this
 
@@ -179,4 +179,6 @@ back. https://github.com/SuperMarioYL/dscache
 
 > After pushing, set repo topics: `gh repo edit --add-topic deepseek --add-topic agent --add-topic prefix-cache`
 
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+> The before/after-bill headline is mirrored on a static **GitHub Pages product site** (a marketing surface — explicitly not the hosted dashboard or SaaS backend).
+
+<p align="center"><sub><a href="./LICENSE">Apache-2.0</a> © 2026 SuperMarioYL</sub></p>

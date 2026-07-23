@@ -31,3 +31,5 @@ DRIFT_REPORT.md
 .builder_*
 .build_metadata*
 .stage_*
+.iter_*
+_build_ctx*

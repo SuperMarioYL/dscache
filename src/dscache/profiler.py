@@ -125,10 +125,18 @@ def price_request(
 ) -> tuple[Decimal, Decimal]:
     """Return ``(cost_actual, cost_ideal)`` for one request, in CNY.
 
-    ``cost_actual`` prices the miss tokens at the full (cache-miss) rate and the
-    cached tokens at the discounted rate. ``cost_ideal`` is the counterfactual
-    where the *entire* prompt had stayed in the cached tier (a byte-stable
-    prefix). The gap between them is the money a prefix-bust costs.
+    ``cost_actual`` prices the cached tokens at the discounted rate, the miss
+    tokens at the full (cache-miss) rate, and any *unaccounted split gap*
+    (``prompt_tokens − cached − miss``) at the miss rate too. DeepSeek documents
+    ``prompt_tokens == cached + miss`` but providers surface inconsistent splits
+    in practice; when ``cached + miss < prompt_tokens`` the gap is real prompt
+    that the provider simply didn't tag as either cached or miss, so pricing it
+    at zero would let a MISS render *cheaper than ideal* (negative waste).
+    Pricing the gap at the miss rate keeps ``cost_actual ≥ cost_ideal`` always
+    (fix fix-cost-actual-drops-split-gap-tokens); the consistent-split case
+    (gap=0) is unchanged. ``cost_ideal`` is the counterfactual where the
+    *entire* prompt had stayed in the cached tier (a byte-stable prefix). The
+    gap between them is the money a prefix-bust costs.
 
     Degrades gracefully: when the cache split is unknown we fall back to pricing
     the whole prompt at the miss rate for ``cost_actual`` and at the hit rate for
@@ -142,16 +150,28 @@ def price_request(
         ideal = Decimal(prompt_tokens) * hit_rate
         return _q(actual), _q(ideal)
 
-    actual = Decimal(cached_tokens) * hit_rate + Decimal(miss_tokens) * miss_rate
+    # The provider's reported split is often inconsistent: cached + miss <
+    # prompt_tokens (system tokens not counted in the cache fields, rounding,
+    # mid-stream truncation). The v0.3.0 cost_ideal fix (below) raised the ideal
+    # to the full prompt_tokens*hit, but left cost_actual pricing ONLY cached+miss
+    # — so the unaccounted gap (prompt−cached−miss) was free and a MISS could
+    # render NEGATIVE waste (reproduced wasted=−0.000045 on cached=10/miss=100/
+    # prompt=500), which then subtracted from the headline's total wasted ¥.
+    # Price that gap at the miss rate inside cost_actual so cost_actual ≥
+    # cost_ideal always and a MISS never shows negative waste; the
+    # consistent-split case (gap=0) is unchanged
+    # (fix fix-cost-actual-drops-split-gap-tokens).
+    gap = max(prompt_tokens - cached_tokens - miss_tokens, 0)
+    actual = (
+        Decimal(cached_tokens) * hit_rate
+        + Decimal(miss_tokens) * miss_rate
+        + Decimal(gap) * miss_rate
+    )
     # cost_ideal is the counterfactual where the ENTIRE prompt had stayed in
     # the cached tier — that is `prompt_tokens * hit_rate`, NOT
-    # `(cached_tokens + miss_tokens) * hit_rate`. DeepSeek documents
-    # prompt_tokens == cached + miss, but providers surface inconsistent
-    # splits in practice (system tokens not counted in the cache fields,
-    # rounding, mid-stream truncation); basing the ideal on the split sum
-    # would understate it when cached + miss < prompt_tokens and so
-    # fabricate phantom wasted ¥ on the headline (fix
-    # fix-cost-ideal-uses-prompt-tokens-not-split-sum).
+    # `(cached_tokens + miss_tokens) * hit_rate`. See above for why basing the
+    # ideal on the split sum fabricates phantom wasted ¥ on the headline
+    # (fix fix-cost-ideal-uses-prompt-tokens-not-split-sum).
     ideal = Decimal(prompt_tokens) * hit_rate
     return _q(actual), _q(ideal)
 

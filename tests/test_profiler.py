@@ -61,11 +61,17 @@ def test_price_request_ideal_uses_prompt_tokens_when_split_inconsistent():
     # ideal and fabricated phantom wasted ¥.
     cached, miss, prompt = 800, 100, 1000  # cached + miss = 900 != 1000
     actual, ideal = price_request(cached, miss, prompt)
-    # actual: 800 cached at hit + 100 miss at miss rate.
-    assert actual == Decimal("0.000600")  # 800*0.5/1M + 100*2.0/1M
+    # actual: 800 cached at hit + 100 miss at miss rate + the 100-token
+    # unaccounted split gap (prompt−cached−miss) priced at the miss rate, so
+    # cost_actual ≥ cost_ideal always (fix
+    # fix-cost-actual-drops-split-gap-tokens).
+    assert actual == Decimal("0.000800")  # 800*0.5/1M + 100*2.0/1M + 100*2.0/1M (gap)
     # ideal: the FULL 1000-prompt cached, NOT the 900 split sum.
     assert ideal == Decimal("0.000500")  # 1000 * 0.5 / 1M
-    # And the consistent case is unchanged (split sum == prompt).
+    # A MISS can no longer render negative waste against the prompt-based ideal.
+    assert actual >= ideal
+    # And the consistent case is unchanged (split sum == prompt -> gap=0).
+    assert price_request(1000, 1000, 2000)[0] == Decimal("0.002500")
     assert price_request(1000, 1000, 2000)[1] == Decimal("0.001000")
 
 

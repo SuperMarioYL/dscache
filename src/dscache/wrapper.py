@@ -139,6 +139,15 @@ def _prefix_sample(request_kwargs: Any) -> Optional[str]:
 
     Each segment is emitted on its own ``\\n`` line so :mod:`dscache.attribute`
     can recover segment granularity (``tools[i]``, ``system``, ``messages[i]``).
+    Message *content* is serialized via the same ``_serialize_value``
+    (``json.dumps``) path already used for tools — which escapes any literal
+    ``\\n`` in the content — before joining, so a multi-line system/user
+    prompt (the common case for coding agents) no longer shatters
+    ``attribute._split_segments`` into N spurious ``segment[K]`` labels and the
+    advertised "which message index" granularity is preserved. Tool blocks were
+    already safe via ``json.dumps``; only raw message content needed it (fix
+    fix-multiline-content-breaks-segment-attribution; the fingerprint-format
+    bump is a v0.4.0 ledger-contract change, samples are per-run).
     The cap is applied at SEGMENT BOUNDARIES across all segments: a segment
     that would overflow the remaining budget is never appended, so no segment
     is ever truncated mid-way (fix
@@ -202,7 +211,13 @@ def _prefix_sample(request_kwargs: Any) -> Optional[str]:
                 content = "".join(
                     str(block.get("text", "")) for block in content if isinstance(block, dict)
                 )
-            if not _append(f"{role}:{content}"):
+            # Serialize content via _serialize_value (json.dumps) — the same
+            # path used for tools — so a literal "\n" in the content is escaped
+            # and "\n" stays an unambiguous segment separator. Otherwise a
+            # multi-line system/user prompt would shatter attribute._split_segments
+            # into N spurious "segment[K]" labels (fix
+            # fix-multiline-content-breaks-segment-attribution).
+            if not _append(f"{role}:{_serialize_value(content)}"):
                 break
 
     return "\n".join(parts) if parts else None
