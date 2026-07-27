@@ -165,7 +165,15 @@ def render_compare_delta(
     c = _headline_numbers(current)
 
     recovered_wasted = b["wasted"] - c["wasted"]
-    recovered_busts = b["busted"] - c["busted"]
+    # The money sign and the bust sign are independent: a run can waste more ¥
+    # while busting fewer prefixes (or vice-versa). Drive each branch's
+    # displayed bust count from the BUST direction and clamp it to
+    # non-negative, so the panel never prints a nonsensical negative bust count
+    # that contradicts the money-driven verdict exactly when the two directions
+    # disagree (fix fix-compare-negative-new-bust-count). The verdict itself
+    # stays money-driven; the bust number is just surfaced alongside it.
+    new_busts = max(c["busted"] - b["busted"], Decimal(0))
+    recovered_busts = max(b["busted"] - c["busted"], Decimal(0))
 
     def _ratio(nums: dict[str, Decimal]) -> str:
         if nums["total_ideal"] > 0:
@@ -191,7 +199,7 @@ def render_compare_delta(
     elif recovered_wasted < 0:
         body = Text.assemble(
             ("Cache got WORSE — ", ""),
-            (f"{-recovered_busts}", "bold red"),
+            (f"{new_busts}", "bold red"),
             (" new bust(s) and ", ""),
             (f"{_money(-recovered_wasted)}", "bold red"),
             (" more wasted (ratio ", ""),
