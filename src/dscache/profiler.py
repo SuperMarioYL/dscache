@@ -227,8 +227,18 @@ def profile(records: Iterable[dict[str, Any]]) -> list[CacheLedgerEntry]:
     the ``busted_against`` links to compute concrete reorder suggestions.
     """
     entries: list[CacheLedgerEntry] = []
-    # Map of fingerprint -> request_id of the first request that established it.
+    # Map of fingerprint -> request_id of the first request that established it
+    # as a cacheable prefix (only HIT/PARTIAL register as owners — a MISS never
+    # cached, so it must not own a "stable" prefix; see fix-bust-reference-quality).
     seen_prefixes: dict[str, str] = {}
+    # Every previously-seen fingerprint regardless of tier (HIT/PARTIAL/MISS).
+    # Used to tell a GENUINELY new prefix from a REPEAT of a prior request's
+    # exact prefix (including a prior MISS): a repeat same-fingerprint
+    # MISS/PARTIAL is a server-side eviction, not a client-side bust — the
+    # client prefix did not diverge (the two samples are byte-identical), so
+    # the honesty caveat says dscache must not count it as a bust (fix
+    # fix-identical-prefix-miss-false-bust).
+    seen_any_prefix: set[str] = set()
     last_request_id: Optional[str] = None
     # request_id of the most recent request that actually HIT the cache. A bust
     # should be attributed to the prefix it *should* have reused — the last known
@@ -269,20 +279,40 @@ def profile(records: Iterable[dict[str, Any]]) -> list[CacheLedgerEntry]:
                 if entry.tier in (Tier.MISS, Tier.PARTIAL):
                     entry.busted_against = seen_prefixes[fp]
             else:
-                # New prefix. If we had a prior request and this one missed the
-                # cache, mark it busted against the last stable prefix so reorder
-                # can suggest pinning back to a byte-stable span.
-                if bust_reference is not None and entry.tier in (Tier.MISS, Tier.PARTIAL):
-                    entry.busted_against = bust_reference
+                # Not owned by a prior HIT/PARTIAL. Two sub-cases:
+                # (a) The fingerprint IS in seen_any_prefix — a prior request
+                #     (including a prior MISS) already sent this EXACT prefix.
+                #     A repeat same-fingerprint MISS/PARTIAL is a server-side
+                #     eviction, NOT a client-side bust: the client prefix did
+                #     not diverge (the two samples are byte-identical), so the
+                #     honesty caveat says dscache must not count it as a bust
+                #     and must not pin it to bust_reference. The previous code
+                #     fell back to bust_reference here, which could land on a
+                #     prior MISS (no prior HIT exists) and inflate the central
+                #     "busted N×" headline with a phantom bust for exactly the
+                #     server-side-eviction case dscache cannot attribute (fix
+                #     fix-identical-prefix-miss-false-bust).
+                # (b) The fingerprint is genuinely NEW (never seen in any
+                #     tier). Only then do we fall back to bust_reference: a
+                #     new prefix that still MISS/PARTIAL'd genuinely diverged
+                #     from the last stable prefix.
+                if fp not in seen_any_prefix:
+                    if bust_reference is not None and entry.tier in (Tier.MISS, Tier.PARTIAL):
+                        entry.busted_against = bust_reference
                 # Register the owner of this fingerprint ONLY when the request
                 # actually cached (HIT or PARTIAL). A MISS never established a
                 # cacheable prefix, so registering it as the owner would make a
                 # later same-fingerprint MISS bust against an UNSTABLE reference
                 # — the exact failure fix-bust-reference-quality closes. A MISS
                 # is simply not recorded, so a later colliding MISS falls through
-                # to the bust_reference path instead.
+                # to the seen_any_prefix check above (and is suppressed as a
+                # server-side eviction) instead.
                 if entry.tier in (Tier.HIT, Tier.PARTIAL):
                     seen_prefixes[fp] = entry.request_id
+            # Track every previously-seen fingerprint regardless of tier, so a
+            # LATER request with the same prefix is recognized as a repeat
+            # (server-side eviction) rather than a genuinely-new bust.
+            seen_any_prefix.add(fp)
 
         entries.append(entry)
         # Only advance last_request_id for JUDGED entries (HIT/PARTIAL/MISS). A

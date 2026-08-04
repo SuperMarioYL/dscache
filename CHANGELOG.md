@@ -1,5 +1,131 @@
 # Changelog
 
+## v0.6.0
+
+A deepening pass over the honesty/correctness thesis. Two `type:fix`
+milestones folded from bug-hunter confidence:high findings close the version-
+reporting drift the v0.5.0 fix was supposed to end and stop a repeat same-
+fingerprint MISS from inflating the central "busted N×" headline; one
+`type:feature` milestone folds cacheguard's byte-level prefix-mutation linter
+into dscache's OWN attribute path as detection-only deepening, retiring the
+orphan sibling.
+
+### Fixes
+
+- **`__version__` now tracks the packaged version via
+  `importlib.metadata`, and `pyproject` / `VERSION` / `CHANGELOG` bump with
+  the release tag.** The v0.5.0 fix `fix-version-string-stale-0-3-0` was
+  chartered to make `dscache.__version__` track the packaged version
+  ("derive it at runtime via `importlib.metadata.version('dscache')` ... so
+  the runtime string tracks the packaged version and cannot drift again"),
+  but the shipped code only hardcoded `__version__ = "0.5.0"` (no
+  `importlib.metadata` derivation) AND never bumped the other sources of
+  truth: `pyproject.toml` was still `version = "0.4.0"`, the `VERSION` file
+  was still `0.4.0`, and `CHANGELOG.md` had no `## v0.5.0` section. The
+  release workflow (`.github/workflows/release.yml` runs `python -m build`,
+  which reads `pyproject.toml`) therefore built a wheel named
+  `dscache-0.4.0` for the git-tagged v0.5.0 release — `pip show dscache`
+  reported 0.4.0 while `dscache version` printed "dscache 0.5.0", and
+  `pip install dscache==0.5.0` could not resolve. The regression test only
+  asserted `__version__ == "0.5.0"`, so it passed while the package metadata
+  was 0.4.0 — it did not guard the drift it was written to prevent.
+  `pyproject.toml`, the `VERSION` file, and the missing `## v0.5.0`
+  CHANGELOG section now all read 0.6.0; `__init__.py` derives `__version__`
+  at runtime via `importlib.metadata.version("dscache")` inside a
+  try/except (`PackageNotFoundError` → literal fallback), so bumping
+  `pyproject.toml` alone updates the runtime string. A new test asserts
+  `__version__ == importlib.metadata.version("dscache")` (when installed)
+  and that `pyproject` / `VERSION` / `__version__` all agree.
+
+- **A repeat same-fingerprint MISS is no longer counted as a client-side
+  bust.** When a run has no prior HIT, `bust_reference = last_hit_request_id
+  or last_request_id` falls back to `last_request_id`, which the v0.3.0 fix
+  only excluded UNKNOWN-tier entries from advancing — so the fallback could
+  still land on a prior MISS. A MISS never registers as a fingerprint owner
+  (v0.3.0's `fix-bust-reference-quality`), so a LATER request with the SAME
+  sampled prefix was treated as a NEW fingerprint and, because its tier was
+  MISS/PARTIAL, `busted_against` was set to the prior MISS even though the
+  two requests' prefix samples were byte-IDENTICAL. Reproduced: two
+  identical-prefix MISSes with no prior HIT yielded `busted=1` and a
+  self-contradicting `suggest_reorder` ("diverged from request r1") while
+  its own `attribute_bust` reported "PREFIX STABLE ... server-side
+  eviction". The profiler now tracks every previously-seen fingerprint
+  regardless of tier (`seen_any_prefix`) and, in the new-prefix branch, does
+  NOT set `busted_against` when the fingerprint is already in
+  `seen_any_prefix` — a repeat prefix that still MISS/PARTIAL'd is a
+  server-side eviction (the client prefix did not diverge), which the
+  honesty caveat says dscache must not count as a client-side bust. It only
+  falls back to `bust_reference` when the fingerprint is genuinely new. A
+  regression test asserts the second identical-prefix MISS has
+  `busted_against is None` and the headline `busted` count is 0.
+
+### Features
+
+- **Byte-level prefix-divergence attribution.** `attribute.py` now diffs
+  two serialized request heads at byte granularity (not just segment-level),
+  naming the exact diverging byte span when a bust is detected — e.g.
+  `PREFIX BUST: tools[3] byte offset 412 reordered vs req r17`. This folds
+  cacheguard's byte-level prefix-mutation linter into dscache's OWN
+  attribute path as DETECTION-only deepening, retiring the orphan cacheguard
+  sibling (0 stars) by absorbing its detection value into the product it
+  duplicated — exactly the "DEEPEN the honesty/correctness thesis, not fork
+  into a sibling re-implementation" posture the v0.5.0 banned-paradigm
+  entry prescribes. Strictly detect-and-attribute: it NEVER mutates the
+  request. The cacheguard prefix-MUTATION capability (rewriting the prefix
+  to stabilize cache) is explicitly DROPPED, consistent with dscache's
+  "suggest only, never mutate" thesis and the out-of-scope standalone-linter
+  ban. The honesty caveat is unchanged: a client can reason only about its
+  OWN prefix divergence; it cannot observe or control DeepSeek's server-side
+  global LRU eviction, so byte-level attribution explains a client-caused
+  bust at finer granularity, not a server-side eviction.
+
+## v0.5.0
+
+A bug-fix + anti-self-clone iteration, from amendment
+`amend-dscache-v0.5.0`. Two `type:fix` milestones folded from bug-hunter
+confidence:high findings; the standalone DeepSeek prefix-cache-stabilizer
+CLI/library paradigm is codified as portfolio-banned to stop self-cloning.
+
+### Fixes
+
+- **The `dscache report --compare` delta panel no longer prints a negative
+  bust count.** `render_compare_delta` drove its displayed bust-count delta
+  off the money sign (`recovered_wasted = b[wasted] − c[wasted]`) while
+  printing the bust delta (`b[busted] − c[busted]`) whose sign is
+  independent, so the bust number went negative and contradicted the verdict
+  exactly when the user needs the before/after read. Reproduced both
+  branches: a bust-heavy baseline vs an all-HIT-with-uncached-miss current
+  hit the WORSE branch and printed "−3 new bust(s) and ¥2.9954 more wasted";
+  the mirror case hit the RECOVERED branch and printed "recovered −5
+  cache-bust(s)". The fix drives the displayed bust count from the BUST
+  sign, clamped non-negative (`max(c[busted] − b[busted], 0)` in WORSE;
+  `max(b[busted] − c[busted], 0)` in RECOVERED), alongside the money-driven
+  verdict so the two never contradict (at `src/dscache/report.py`).
+
+- **`__version__` bumped to track the shipped 0.4.0.** `__version__` was
+  never bumped during the v0.4.0 iteration, so `dscache version` printed
+  "0.3.0" for a 0.4.0 install (lagging `pyproject.toml` / `VERSION` /
+  `CHANGELOG.md` / the build metadata, all 0.4.0). This v0.5.0 release set
+  `__version__ = "0.5.0"`; the v0.6.0 fix above completes the original
+  prescription by deriving it via `importlib.metadata` and keeping
+  `pyproject` / `VERSION` / `CHANGELOG` in sync with the release tag (at
+  `src/dscache/__init__.py`).
+
+### Other
+
+- **Standalone DeepSeek prefix-cache-stabilizer CLI/library codified as
+  portfolio-banned.** Subsequent scans (2026-06-20 / 06-22 / 06-23 / 06-27)
+  regenerated near-duplicate winners (t9dcache, dskprfx, dscache1,
+  cacheguard) because the dedup gate dedups by `need_id`, not by concept.
+  Future dscache iterations must DEEPEN the honesty/correctness thesis, not
+  fork into a sibling re-implementation (reaffirms the existing tokensched /
+  cachepin / cacheguard sibling-lane bans already in `out_of_scope`).
+
+No stack change; no target files added/removed; no `out_of_scope` additions;
+`launch_post_changes: []`; `raw_patches: []`; `prose_patches: []`. No action
+on the 5-day external traction signal (premature vs the 30-day kill window;
+0 issues / 0 PRs / no user-filed wasted-money issues).
+
 ## v0.4.0
 
 A bug-hunt + git-sync pass. Two `type:fix` folded from bug-hunter HIGH

@@ -296,3 +296,147 @@ def test_multiline_content_attribution_end_to_end_via_profile():
     assert suggestion.attribution is not None
     assert "system" in suggestion.attribution.segment
     assert not suggestion.attribution.segment.startswith("segment[")
+
+
+# --- feat-byte-level-prefix-divergence-attribution --------------------------
+#
+# v0.6.0 deepened attribute.py from segment-level to BYTE granularity: the
+# attribution now names the first diverging SEGMENT AND the exact diverging
+# BYTE offset within it (``byte_offset``), so a bust tells the user *where* in
+# the segment the client prefix broke, not just *which* segment. This folds
+# cacheguard's byte-level prefix-mutation linter into dscache's OWN attribute
+# path as DETECTION-only deepening — strictly detect-and-attribute, never
+# mutates (the cacheguard prefix-MUTATION capability is DROPPED).
+
+
+def test_attribute_byte_offset_within_diverging_segment():
+    # Two single-segment heads that share a leading stable span then diverge.
+    # The diverging byte offset is the byte position where 'X' vs 'Y' starts.
+    shared_prefix = "tools[0]:stableprefix"
+    ref = f"{shared_prefix}X"
+    busted = f"{shared_prefix}Y"
+    attribution = attribute_bust(busted, ref, "r17")
+    assert attribution.diverged
+    assert attribution.segment == "tools[0]"
+    # The byte offset is the length of the shared UTF-8 prefix.
+    assert attribution.byte_offset == len(shared_prefix.encode("utf-8"))
+    assert f"byte offset {attribution.byte_offset}" in attribution.message
+    assert "tools[0]" in attribution.message
+    assert "r17" in attribution.message
+
+
+def test_attribute_byte_offset_none_when_clean_diff():
+    # Byte-identical heads -> no client-side divergence; byte_offset stays None
+    # and the stable message carries no "byte offset" clause.
+    sample = "tools[0]:same"
+    attribution = attribute_bust(sample, sample, "r1")
+    assert not attribution.diverged
+    assert attribution.segment is None
+    assert attribution.byte_offset is None
+    assert "byte offset" not in attribution.message
+    assert "server-side" in attribution.message.lower()
+
+
+def test_attribute_byte_offset_zero_when_segment_appended():
+    # ref has 1 segment; busted appends a 2nd segment. The divergence is the
+    # appended segment, whose first diverging byte is offset 0 (the whole
+    # segment is new). Guards the length-divergence branch.
+    ref = "system:stable"
+    busted = "system:stable\nuser:new"
+    attribution = attribute_bust(busted, ref, "r9")
+    assert attribution.diverged
+    assert "user" in attribution.segment
+    assert attribution.byte_offset == 0
+    assert "byte offset 0" in attribution.message
+
+
+def test_attribute_byte_offset_zero_when_segment_removed():
+    # Mirror: busted has 1 segment; ref had 2 (busted removed the 2nd). The
+    # divergence is the removed segment; byte offset is 0 (the segment is gone
+    # from byte 0).
+    ref = "system:stable\nuser:gone"
+    busted = "system:stable"
+    attribution = attribute_bust(busted, ref, "r9")
+    assert attribution.diverged
+    assert attribution.byte_offset == 0
+    assert "byte offset 0" in attribution.message
+
+
+def test_attribute_byte_offset_counts_utf8_bytes_not_chars():
+    # The byte offset counts UTF-8 BYTES, not characters — so a non-ASCII prompt
+    # still reports a stable, byte-accurate span. The shared prefix
+    # "system:语" is 7 ASCII bytes + one 3-byte CJK char (语) = 10 bytes, but
+    # only 8 characters. The diverging chars (日 vs 中) differ at their FIRST
+    # UTF-8 byte (日 = e6.., 中 = e4..), so the divergence lands exactly at
+    # byte 10. Char-counting would put it at 8; byte-counting puts it at 10.
+    shared = "system:语"  # 语 = U+8BED (3 UTF-8 bytes) -> 10 bytes / 8 chars
+    ref = f"{shared}日"     # 日 = U+65E5 -> e6 97 a5
+    busted = f"{shared}中"  # 中 = U+4E2D -> e4 b8 ad  (first byte != 日's)
+    attribution = attribute_bust(busted, ref, "r1")
+    assert attribution.diverged
+    assert attribution.byte_offset == len(shared.encode("utf-8"))  # 10 bytes
+    assert attribution.byte_offset == 10
+    assert attribution.byte_offset != len(shared)  # 8 chars — not the char count
+
+
+def test_attribute_byte_offset_locates_divergence_in_a_later_segment():
+    # Segments 0 and 1 are byte-identical; the divergence is in segment 2. The
+    # byte offset is WITHIN segment 2 (not an absolute head offset), starting
+    # at the position where the two tools[2] serializations differ.
+    stable_a = "tools[0]:A"
+    stable_b = "tools[1]:B"
+    ref = f"{stable_a}\n{stable_b}\ntools[2]:sameprefixX"
+    busted = f"{stable_a}\n{stable_b}\ntools[2]:sameprefixY"
+    attribution = attribute_bust(busted, ref, "r5")
+    assert attribution.diverged
+    assert attribution.segment == "tools[2]"
+    # The byte offset is within tools[2]: len("tools[2]:sameprefix") bytes.
+    within_seg_shared = "tools[2]:sameprefix"
+    assert attribution.byte_offset == len(within_seg_shared.encode("utf-8"))
+    # The stable span covers segments 0..1.
+    assert attribution.stable_through == "segments[0..1]"
+
+
+def test_byte_level_attribution_surfaces_through_suggest_reorder():
+    # End-to-end: a reordered tool list busts the cache; suggest_reorder's
+    # attribution names the diverging segment AND surfaces a byte offset
+    # within it (the byte granularity flows wrapper -> profiler -> reorder).
+    messages = [{"role": "system", "content": "You are an agent."}]
+    s_ref = _prefix_sample(
+        {"messages": messages, "tools": [_tool("read"), _tool("write"), _tool("grep")]}
+    )
+    s_busted = _prefix_sample(
+        {"messages": messages, "tools": [_tool("read"), _tool("write"), _tool("DIFFERENT")]}
+    )
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": s_ref},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": s_busted},
+    ]
+    suggestion = suggest_reorder(profile(records))
+    assert suggestion is not None
+    assert suggestion.attribution is not None
+    assert suggestion.attribution.segment == "tools[2]"
+    # The diverging byte sits inside the tools[2] serialization (after the
+    # shared "tools[2]:" + json preamble), so it is a positive offset.
+    assert suggestion.attribution.byte_offset is not None
+    assert suggestion.attribution.byte_offset > 0
+    assert "byte offset" in suggestion.message
+
+
+def test_byte_level_attribution_never_mutates_inputs():
+    # The byte-level deepening stays detect-only — it must never rewrite the
+    # request (the cacheguard prefix-MUTATION capability is DROPPED, consistent
+    # with dscache's "suggest only, never mutate" thesis).
+    messages = [{"role": "system", "content": "s"}]
+    tools = [_tool("a"), _tool("b")]
+    before = _prefix_sample({"messages": messages, "tools": tools})
+    ref = _prefix_sample({"messages": messages, "tools": [_tool("a"), _tool("c")]})
+    attribution = attribute_bust(before, ref, "r1")
+    assert attribution.diverged
+    assert attribution.byte_offset is not None
+    # Nothing mutated: the request structures and samples are untouched.
+    assert messages == [{"role": "system", "content": "s"}]
+    assert tools[0]["function"]["name"] == "a"
+    assert tools[1]["function"]["name"] == "b"

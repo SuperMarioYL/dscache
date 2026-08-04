@@ -149,9 +149,13 @@ def test_busted_against_falls_back_to_neighbor_when_no_prior_hit():
 def test_miss_does_not_register_as_fingerprint_owner_when_prior_hit_exists():
     # r0 HIT (stable prefix STABLE). r1 MISS with a NEW prefix A. r2 MISS with
     # the SAME prefix A. The old code registered r1 (a MISS) as the owner of A,
-    # so r2's collision busted against r1 — an UNSTABLE reference. The fix
-    # skips registering a MISS, so r2 falls through to the bust_reference path
-    # and is attributed to the prior HIT (r0), the stable reference.
+    # so r2's collision busted against r1 — an UNSTABLE reference. The v0.3.0
+    # fix skips registering a MISS, so r1 is not the owner; the v0.6.0 fix
+    # (fix-identical-prefix-miss-false-bust) goes one step further: r2 sends
+    # the EXACT same prefix as r1 (a repeat, byte-identical), so r2 is a
+    # server-side eviction, NOT a client-side bust — it must NOT be busted at
+    # all (neither against r1 nor against the prior HIT r0). r1 (a genuinely
+    # new prefix that diverged from r0) is still busted against r0.
     records = [
         {"request_id": "r0", "prompt_tokens": 1000, "cached_tokens": 980,
          "miss_tokens": 20, "prefix_sample": "system:STABLE\nuser:a"},
@@ -164,9 +168,15 @@ def test_miss_does_not_register_as_fingerprint_owner_when_prior_hit_exists():
     assert entries[0].tier is Tier.HIT
     assert entries[1].tier is Tier.MISS
     assert entries[2].tier is Tier.MISS
-    # r1 (MISS) is NOT the owner; r2 busts against the prior HIT r0, not r1.
+    # r1 (genuinely-new prefix that diverged from r0) busts against the prior
+    # HIT r0, NOT against itself; r1 (MISS) is NOT registered as an owner.
     assert entries[1].busted_against == "r0"
-    assert entries[2].busted_against == "r0"  # NOT "r1"
+    # r2 sends the exact same prefix as r1 — a repeat, byte-identical. That is
+    # a server-side eviction (the client prefix did not diverge), so dscache
+    # must NOT count it as a client-side bust: busted_against stays None
+    # (NOT "r1", and NOT "r0" either — the v0.3.0 fallback to r0 is itself the
+    # false-bust class the v0.6.0 fix closes).
+    assert entries[2].busted_against is None  # NOT "r1", NOT "r0"
 
 
 def test_unknown_does_not_become_last_request_fallback():
@@ -186,6 +196,112 @@ def test_unknown_does_not_become_last_request_fallback():
     assert entries[1].tier is Tier.MISS
     # r2 cannot be attributed to the UNKNOWN r1 — it stays None.
     assert entries[1].busted_against is None
+
+
+# --- fix-identical-prefix-miss-false-bust ------------------------------------
+
+
+def test_repeat_same_fingerprint_miss_with_no_prior_hit_is_not_a_bust():
+    # The central reproduction for fix-identical-prefix-miss-false-bust: a run
+    # with NO prior HIT where two consecutive requests send the EXACT same
+    # sampled prefix and both MISS. The client prefix did not diverge between
+    # r1 and r2 (the samples are byte-identical), so r2's MISS is a
+    # server-side eviction, not a client-side bust. The old code fell back to
+    # bust_reference = last_request_id (which the v0.3.0 fix only excluded
+    # UNKNOWN-tier entries from advancing, so it still landed on the prior
+    # MISS r1), flagged r2 as busted against r1, and the headline reported
+    # busted=1 for a run with ZERO client-side divergence — while
+    # suggest_reorder emitted a self-contradicting "diverged from request r1"
+    # message whose own attribute_bust reported "PREFIX STABLE ... server-side
+    # eviction". The v0.6.0 fix tracks every previously-seen fingerprint
+    # (seen_any_prefix) and suppresses busted_against when the fingerprint is
+    # a repeat, so r2 is not busted and the headline busted count is 0.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:stable\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:stable\nuser:a"},  # SAME
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.MISS
+    assert entries[1].tier is Tier.MISS
+    # Fingerprints are byte-identical (same sampled prefix)...
+    assert entries[0].prefix_fingerprint is not None
+    assert entries[0].prefix_fingerprint == entries[1].prefix_fingerprint
+    # No prior HIT, so r1 has no stable reference to bust against.
+    assert entries[0].busted_against is None
+    # r2 is a REPEAT of r1's exact prefix — a server-side eviction, not a
+    # client-side bust. busted_against must NOT be set (the old code set it
+    # to "r1", inflating the headline).
+    assert entries[1].busted_against is None
+    # The headline must report ZERO client-side busts for this run.
+    from dscache.report import _headline_numbers
+
+    nums = _headline_numbers(entries)
+    assert nums["busted"] == 0
+
+
+def test_repeat_same_fingerprint_partial_current_with_prior_miss_is_not_a_bust():
+    # The suppression also covers a PARTIAL *current* request when the PRIOR
+    # same-prefix request was a MISS (a MISS never registers as an owner, so
+    # the later request falls into the else branch and is suppressed via
+    # seen_any_prefix). The client prefix did not diverge (the two samples are
+    # byte-identical), so even a PARTIAL here is a server-side eviction, not a
+    # client-side bust. (A PARTIAL *prior* would register as an owner and the
+    # later same-prefix request would collide via the owner path — that stays
+    # a bust, per fix-same-fingerprint-miss-not-busted; the v0.6.0 fix only
+    # touches the no-owner else branch.)
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:stable\nuser:a"},  # MISS
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 500,
+         "miss_tokens": 500, "prefix_sample": "system:stable\nuser:a"},  # SAME, PARTIAL
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.MISS
+    assert entries[1].tier is Tier.PARTIAL
+    assert entries[0].busted_against is None
+    # r2 repeats r1's exact prefix — server-side eviction, not a bust.
+    assert entries[1].busted_against is None
+
+
+def test_genuinely_new_prefix_miss_with_no_prior_hit_falls_back_to_neighbor():
+    # The v0.6.0 fix only suppresses SAME-prefix repeats (a server-side
+    # eviction). A GENUINELY new prefix that MISSes with no prior HIT is a real
+    # client-side divergence from the prior judged request, so it still falls
+    # back to the neighbor (last_request_id) — unchanged from v0.3.0's
+    # fix-bust-reference-quality. This guards that the fix doesn't over-suppress
+    # genuinely-new-prefix busts.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:AAA\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:BBB\nuser:a"},  # different
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.MISS
+    assert entries[1].tier is Tier.MISS
+    assert entries[0].busted_against is None  # no prior judged neighbor
+    # r2 is a genuinely-new prefix (NOT a repeat) -> NOT suppressed; it falls
+    # back to the prior judged neighbor r1.
+    assert entries[1].busted_against == "r1"
+    assert entries[0].prefix_fingerprint != entries[1].prefix_fingerprint
+
+
+def test_headline_excludes_repeat_miss_busts_from_busted_count():
+    # End-to-end: the headline's "busted N×" must not count a repeat same-
+    # fingerprint MISS (server-side eviction) as a bust. Reproduced the old
+    # false-bust: two identical-prefix MISSes -> busted=1; the fix -> busted=0.
+    from dscache.report import _headline_numbers
+
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:stable\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:stable\nuser:a"},
+    ]
+    nums = _headline_numbers(profile(records))
+    assert nums["busted"] == 0
 
 
 # --- fix-cost-actual-drops-split-gap-tokens ---------------------------------

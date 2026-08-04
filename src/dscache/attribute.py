@@ -1,11 +1,11 @@
-"""Segment-level bust attribution.
+"""Byte-level prefix-divergence attribution.
 
 When the profiler detects a prefix bust against its most-recent-HIT reference,
-this module diffs the two *serialized request heads* at segment granularity —
-which message index, which tool block, or the system text — and names the
-**first** diverging segment, e.g.::
+this module diffs the two *serialized request heads* at BYTE granularity —
+naming the **first** diverging segment AND the exact diverging byte offset
+within it, e.g.::
 
-    PREFIX BUST: tools[3] reordered vs req r17; messages[0..2] still stable.
+    PREFIX BUST: tools[3] byte offset 412 diverged vs req r17; segments[0..2] still stable.
 
 This is **detect-and-attribute only**: it never mutates the request. It also
 ships with an explicit honesty caveat — a client can reason only about its OWN
@@ -18,7 +18,18 @@ The diffable unit is the serialized prefix sample produced by
 :func:`dscache.wrapper._prefix_sample`, which (as of v0.2.0) prefixes a
 serialization of ``tools`` / ``tool_choice`` / ``response_format`` ahead of the
 leading message text. Segments are recovered by splitting that sample back on
-the same ``\\n`` boundaries the wrapper writes.
+the same ``\\n`` boundaries the wrapper writes; the byte offset is then located
+*within* the first diverging segment by comparing its UTF-8 bytes against the
+reference segment's bytes.
+
+v0.6.0 deepened the diff from segment-level to byte granularity
+(``feat-byte-level-prefix-divergence-attribution``), folding cacheguard's
+byte-level prefix-mutation linter into dscache's OWN attribute path as
+DETECTION-only deepening. The cacheguard prefix-MUTATION capability (rewriting
+the prefix to stabilize cache) is explicitly DROPPED, consistent with dscache's
+"suggest only, never mutate" thesis and the out-of-scope standalone-linter
+ban. The honesty caveat is unchanged: byte-level attribution explains a
+client-caused bust at finer granularity, not a server-side eviction.
 """
 
 from __future__ import annotations
@@ -38,7 +49,13 @@ HONESTY_CAVEAT = (
 
 @dataclass
 class SegmentAttribution:
-    """The first diverging segment between a bust and its reference request."""
+    """The first diverging segment (and byte) between a bust and its reference.
+
+    v0.6.0 deepened the diff from segment-level to byte granularity: the
+    ``byte_offset`` field names the exact diverging byte within the first
+    diverging segment, so a bust tells the user *where* in the segment the
+    client prefix broke, not just *which* segment.
+    """
 
     #: Human-readable label of the first diverging segment, e.g. ``tools[3]``,
     #: ``messages[0]`` or ``system``. ``None`` when no client-side divergence
@@ -51,6 +68,13 @@ class SegmentAttribution:
     stable_through: Optional[str]
     #: One-line, copy-pasteable attribution message.
     message: str
+    #: 0-based BYTE offset, *within the first diverging segment*, of the first
+    #: byte where the busted request's serialized head diverges from the
+    #: reference's. ``None`` when no client-side divergence was found (clean
+    #: diff / server-side eviction). Counts UTF-8 bytes of the segment text,
+    #: so a non-ASCII prompt still reports a stable byte-accurate span
+    #: (feat-byte-level-prefix-divergence-attribution).
+    byte_offset: Optional[int] = None
 
     @property
     def diverged(self) -> bool:
@@ -91,12 +115,46 @@ def _stable_label(segments: list[str], upto: int) -> Optional[str]:
     return f"segments[0..{last}]"
 
 
+def _first_diverging_byte_offset(busted_seg: str, ref_seg: str) -> Optional[int]:
+    """0-based BYTE offset of the first diverging byte within a segment pair.
+
+    Counts UTF-8 bytes of the segment text (not characters), so a non-ASCII
+    prompt still reports a stable, byte-accurate span. Returns the offset of
+    the first byte where the two segments differ; if one segment is a strict
+    byte-prefix of the other (a length divergence — a segment that grew or
+    shrank), returns the length of the shared byte prefix (the offset where
+    the appended/removed tail begins). Returns ``None`` only when the two
+    segments are byte-identical (no divergence to locate).
+
+    (feat-byte-level-prefix-divergence-attribution: deepen the diff from
+    segment-level to byte granularity.)
+    """
+    b_busted = busted_seg.encode("utf-8")
+    b_ref = ref_seg.encode("utf-8")
+    shared = min(len(b_busted), len(b_ref))
+    for i in range(shared):
+        if b_busted[i] != b_ref[i]:
+            return i
+    if len(b_busted) == len(b_ref):
+        # Byte-identical — no divergence to locate within this segment.
+        return None
+    # One is a strict byte-prefix of the other: the divergence starts at the
+    # first byte past the shared prefix (the appended/removed tail).
+    return shared
+
+
 def attribute_bust(
     busted_sample: Optional[str],
     reference_sample: Optional[str],
     reference_request_id: Optional[str],
 ) -> SegmentAttribution:
-    """Diff two serialized request heads and name the first diverging segment.
+    """Diff two serialized request heads and name the first diverging byte.
+
+    v0.6.0 deepened the diff from segment-level to BYTE granularity
+    (``feat-byte-level-prefix-divergence-attribution``): the result names the
+    first diverging SEGMENT (``tools[3]`` / ``messages[0]`` / ``system``) AND
+    the exact diverging BYTE offset within it, so a bust tells the user
+    *where* in the segment the client prefix broke, not just *which* segment.
 
     Parameters
     ----------
@@ -111,10 +169,14 @@ def attribute_bust(
     Returns
     -------
     SegmentAttribution
-        ``segment`` is the label of the first diverging segment, or ``None``
-        when the two heads are byte-identical over their shared length (a clean
-        client-side diff — the bust is then attributable to server-side eviction,
-        which dscache cannot observe).
+        ``segment`` is the label of the first diverging segment and
+        ``byte_offset`` is the 0-based byte offset of the first diverging byte
+        within that segment; both are ``None`` when the two heads are
+        byte-identical over their shared length (a clean client-side diff —
+        the bust is then attributable to server-side eviction, which dscache
+        cannot observe).
+
+    This is **detect-and-attribute only**: it never mutates either sample.
     """
     busted_segs = _split_segments(busted_sample)
     ref_segs = _split_segments(reference_sample)
@@ -145,27 +207,45 @@ def attribute_bust(
             reference_request_id=reference_request_id,
             stable_through=_stable_label(busted_segs, len(busted_segs)),
             message=message,
+            byte_offset=None,
         )
 
     # Label the diverging segment. Past-the-end divergence (a removed/added
     # block) is reported against whichever side still has the segment.
-    if first_divergence < len(busted_segs):
-        seg_text = busted_segs[first_divergence]
-    elif first_divergence < len(ref_segs):
-        seg_text = ref_segs[first_divergence]
-    else:  # pragma: no cover — defensive
-        seg_text = ""
+    busted_seg_text = (
+        busted_segs[first_divergence] if first_divergence < len(busted_segs) else ""
+    )
+    ref_seg_text = (
+        ref_segs[first_divergence] if first_divergence < len(ref_segs) else ""
+    )
+    seg_text = busted_seg_text or ref_seg_text
     label = _segment_label(seg_text, first_divergence)
     stable = _stable_label(busted_segs, first_divergence)
 
+    # Byte-level deepening: locate the first diverging BYTE within the
+    # diverging segment pair (feat-byte-level-prefix-divergence-attribution).
+    # When the segment exists on BOTH sides, diff its UTF-8 bytes against the
+    # reference segment's bytes; when it exists on only one side (a segment
+    # appended/removed past the common segment prefix), the divergence starts
+    # at byte 0 of that segment.
+    if busted_seg_text and ref_seg_text:
+        byte_offset = _first_diverging_byte_offset(busted_seg_text, ref_seg_text)
+        if byte_offset is None:  # pragma: no cover — defensive
+            # The two segment texts are byte-identical; should not happen for a
+            # known-diverging segment, but treat the whole segment as the span.
+            byte_offset = 0
+    else:
+        byte_offset = 0
+
     stable_clause = f"{stable} still stable" if stable else "nothing before it was stable"
     message = (
-        f"PREFIX BUST: {label} diverged vs req {ref_tag}; {stable_clause}. "
-        f"{HONESTY_CAVEAT}"
+        f"PREFIX BUST: {label} byte offset {byte_offset} diverged vs req "
+        f"{ref_tag}; {stable_clause}. {HONESTY_CAVEAT}"
     )
     return SegmentAttribution(
         segment=label,
         reference_request_id=reference_request_id,
         stable_through=stable,
         message=message,
+        byte_offset=byte_offset,
     )
