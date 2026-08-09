@@ -50,13 +50,13 @@
     {
       "title": { "zh": "打爆只归因到真正命中过的前缀，不甩锅给 MISS", "en": "A bust is pinned to a prefix that actually cached — never to a MISS" },
       "body": {
-        "zh": "一个 MISS 本就没缓存过，它不该当一个「稳定前缀」的主人——可旧逻辑让它注册成了主人，于是后面一条采样头相同的请求（也是 MISS）就被对一个不稳定的主人判了打爆，重排建议还让你去钉一个自己都不缓存的前缀。现在只有 HIT/PARTIAL 才注册为指纹主人，游标只在可判定的条目上推进——打爆指向的永远是真正缓存过的那一条，建议也就不会再指错。",
-        "en": "A MISS never cached, so it shouldn't register as the owner of a 'stable' prefix — yet it did, so a later request with the same sampled head (also a MISS) was busted against an unstable owner, and the reorder suggestion told you to pin to a prefix that itself didn't cache. Now only HIT/PARTIAL entries register as fingerprint owners, and the cursor advances only on judged entries — a bust always points back to a request that actually cached, so the suggestion never points you wrong."
+        "zh": "一个 MISS 本就没缓存过，它既不该当一个「稳定前缀」的主人，也不该当后面请求打爆时回退的参照——可旧逻辑两样都让它干了：先把它注册成主人，于是后面一条采样头相同的请求（也是 MISS）就被对一个不稳定的主人判了打爆；又让回退游标在它身上推进，于是一轮还没命中过任何前缀的冷启动里，后面一条换了前缀的 MISS 会被对到前一条 MISS，凭空多记一次打爆，重排建议还让你去钉一个自己都不缓存的前缀。现在只有 HIT/PARTIAL 才注册为主人和游标参照——打爆指向的永远是真正缓存过的那一条，连冷启动整轮没命中过的情况也不再虚报打爆，建议也就不会再指错。",
+        "en": "A MISS never cached, so it's neither a rightful owner of a 'stable' prefix NOR the fallback reference a later bust resolves to — yet the old logic let it be both: it registered MISSes as owners, so a later request with the same sampled head (also a MISS) was busted against an unstable owner; and it advanced the fallback cursor through a MISS, so on a cold-start run where nothing had cached yet, a later different-prefix MISS was pinned to the prior MISS, fabricating a bust, and the reorder suggestion told you to pin to a prefix that itself didn't cache. Now only HIT/PARTIAL entries register as owners AND as the fallback reference — a bust always points back to a request that actually cached, and even a cold-start run that never landed a hit reports zero busts (nothing cached, nothing to have diverged from), so the suggestion never points you wrong."
       },
       "chips": [
         "› 只 HIT/PARTIAL 当主人",
-        "› MISS 不再背锅",
-        "› 重排建议不指错"
+        "› MISS 不当回退参照",
+        "› 冷启动不虚报打爆"
       ]
     },
     {
@@ -95,7 +95,7 @@
   },
   "meta": {
     "content_version": "v0.7.0",
-    "generated_at": "2026-08-04T05:30:00Z",
+    "generated_at": "2026-08-09T05:10:00Z",
     "web_factory_ref": "v1.1"
   }
 }
