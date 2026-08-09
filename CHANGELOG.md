@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.7.0
+
+A continuation of the honesty/correctness-deepening arc. One `type:fix`
+milestone folded from a bug-hunter `confidence:high` finding closes the
+genuinely-new-prefix sub-case the v0.6.0 `fix-identical-prefix-miss-false-bust`
+left open.
+
+### Fixes
+
+- **A genuinely-new-prefix MISS no longer busts against a prior MISS when no
+  stable prefix exists.** The v0.6.0 `fix-identical-prefix-miss-false-bust`
+  suppressed the REPEAT-same-fingerprint MISS sub-case (a prior MISS whose exact
+  prefix was sent again) but left the GENUINELY-NEW-prefix sub-case open: when no
+  prior HIT existed at all (cold start — the first calls of a fresh agent
+  session), a later MISS with a DIFFERENT fingerprint was "genuinely new", so it
+  fell back to `bust_reference = last_request_id`, which (with no HIT) was the
+  previous MISS. The previous MISS never cached (it is not a `seen_prefixes`
+  owner), so the new-prefix MISS busted against a reference that was never stable
+  — exactly the phantom "busted N×" inflation the v0.6.0 rationale targeted for
+  the repeat sub-case. The v0.6.0 comment even stated the fallback should be the
+  "last stable prefix" but still advanced `last_request_id` for a MISS, so the
+  code contradicted its own stated intent. Reproduced: two different-prefix
+  MISSes with no prior HIT yielded `busted=1` and a `suggest_reorder` message
+  telling the user to "pin to the byte order used in r1" — pinning to a
+  never-cached prefix cannot recover the discount, contradicting the honesty
+  thesis every prior fix deepened. The profiler now advances `last_request_id`
+  (the fallback) only for requests that actually cached (`HIT` or `PARTIAL`), so
+  a cold-start all-MISS different-prefix run reports `busted=0` (nothing cached,
+  nothing to have diverged from) — the honest answer. `last_hit_request_id` (the
+  primary reference) and the `seen_prefixes` owner path are unchanged, so every
+  prior-HIT bust case stays green. Two regression tests pin the invariant: a
+  cold-start all-MISS different-prefix run has every `busted_against` `None` and
+  headline `busted == 0`; and a genuinely-new-prefix MISS after a prior PARTIAL
+  still busts against it (the fix does not over-suppress legitimate busts).
+
 ## v0.6.0
 
 A deepening pass over the honesty/correctness thesis. Two `type:fix`

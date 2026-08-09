@@ -47,7 +47,7 @@ __all__ = [
 # manually. When installed (the release path the release.yml workflow drives
 # via ``python -m build``), the metadata wins, so bumping ``pyproject.toml``
 # alone updates ``dscache.__version__`` and ``dscache version`` automatically.
-_FALLBACK_VERSION = "0.6.0"
+_FALLBACK_VERSION = "0.7.0"
 try:
     __version__ = _metadata.version("dscache")
 except _metadata.PackageNotFoundError:  # source checkout, not installed

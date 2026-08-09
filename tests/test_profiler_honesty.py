@@ -265,13 +265,22 @@ def test_repeat_same_fingerprint_partial_current_with_prior_miss_is_not_a_bust()
     assert entries[1].busted_against is None
 
 
-def test_genuinely_new_prefix_miss_with_no_prior_hit_falls_back_to_neighbor():
-    # The v0.6.0 fix only suppresses SAME-prefix repeats (a server-side
-    # eviction). A GENUINELY new prefix that MISSes with no prior HIT is a real
-    # client-side divergence from the prior judged request, so it still falls
-    # back to the neighbor (last_request_id) — unchanged from v0.3.0's
-    # fix-bust-reference-quality. This guards that the fix doesn't over-suppress
-    # genuinely-new-prefix busts.
+def test_genuinely_new_prefix_miss_with_no_prior_stable_prefix_not_busted():
+    # fix-new-prefix-miss-busts-against-prior-miss (v0.7.0): the v0.6.0
+    # fix-identical-prefix-miss-false-bust suppressed SAME-prefix repeats (a
+    # server-side eviction) but left the GENUINELY-new-prefix sub-case open — a
+    # different-prefix MISS with no prior HIT fell back to last_request_id, which
+    # (with no HIT) was the prior MISS, so it busted against a never-cached
+    # reference and inflated the "busted N×" headline on cold-start all-MISS
+    # runs. The v0.6.0 comment said the fallback should be the "last stable
+    # prefix" but last_request_id was advanced for a MISS too. The v0.7.0 fix
+    # advances last_request_id only for HIT/PARTIAL (cached) entries, so with no
+    # prior stable prefix a genuinely-new-prefix MISS does NOT bust: nothing was
+    # ever cached, so there is no stable prefix to have diverged from — the
+    # honest answer. (The prior v0.6.0 test asserted the buggy fallback-to-MISS;
+    # this updated assertion pins the corrected behavior.)
+    from dscache.report import _headline_numbers
+
     records = [
         {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
          "miss_tokens": 980, "prefix_sample": "system:AAA\nuser:a"},
@@ -281,11 +290,10 @@ def test_genuinely_new_prefix_miss_with_no_prior_hit_falls_back_to_neighbor():
     entries = profile(records)
     assert entries[0].tier is Tier.MISS
     assert entries[1].tier is Tier.MISS
-    assert entries[0].busted_against is None  # no prior judged neighbor
-    # r2 is a genuinely-new prefix (NOT a repeat) -> NOT suppressed; it falls
-    # back to the prior judged neighbor r1.
-    assert entries[1].busted_against == "r1"
     assert entries[0].prefix_fingerprint != entries[1].prefix_fingerprint
+    # No prior HIT and no prior HIT/PARTIAL -> no stable prefix to diverge from.
+    assert all(e.busted_against is None for e in entries)
+    assert _headline_numbers(entries)["busted"] == 0
 
 
 def test_headline_excludes_repeat_miss_busts_from_busted_count():
@@ -355,6 +363,28 @@ def test_headline_miss_with_inconsistent_split_never_negative():
     # subtract from the headline).
     nums = _headline_numbers(entries)
     assert nums["wasted"] >= Decimal("0")
+
+
+def test_new_prefix_miss_after_partial_still_busts():
+    # Regression guard for fix-new-prefix-miss-busts-against-prior-miss: the fix
+    # only stops a MISS from becoming the fallback reference. A prior PARTIAL DID
+    # cache (it is a seen_prefixes owner, last_request_id advances for PARTIAL),
+    # so a later genuinely-new-prefix MISS must STILL bust against it — the fix
+    # must not over-suppress legitimate busts. (A PARTIAL is a stable-ish prefix;
+    # pinning to it can recover the partial discount.)
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 500,
+         "miss_tokens": 500, "prefix_sample": "system:AAA\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:BBB\nuser:a"},
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.PARTIAL
+    assert entries[1].tier is Tier.MISS
+    assert entries[0].prefix_fingerprint != entries[1].prefix_fingerprint
+    # r2's genuinely-new prefix diverged from the prior PARTIAL r1 (which cached)
+    # -> legitimate bust, NOT suppressed by the cold-start fix.
+    assert entries[1].busted_against == "r1"
 
 
 def _render(panel) -> str:

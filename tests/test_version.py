@@ -38,8 +38,11 @@ def test_dunder_version_is_not_a_stale_literal():
     assert dscache.__version__ != "0.3.0"
     assert dscache.__version__ != "0.4.0"
     assert dscache.__version__ != "0.5.0"
-    # The target version for this iteration is 0.6.0.
-    assert dscache.__version__ == "0.6.0"
+    # __version__ must equal the pyproject version (the source of truth the
+    # release wheel is built from) — version-agnostic, so a bump never needs to
+    # touch this assertion again (the v0.6.0 test hardcoded "0.6.0" and had to
+    # be hand-bumped each release).
+    assert dscache.__version__ == _pyproject_version()
 
 
 def test_dunder_version_matches_packaged_metadata_when_installed():

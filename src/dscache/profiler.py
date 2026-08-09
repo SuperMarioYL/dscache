@@ -315,12 +315,18 @@ def profile(records: Iterable[dict[str, Any]]) -> list[CacheLedgerEntry]:
             seen_any_prefix.add(fp)
 
         entries.append(entry)
-        # Only advance last_request_id for JUDGED entries (HIT/PARTIAL/MISS). A
-        # bust_reference fallback to an UNKNOWN-tier request — one whose cache
-        # split DeepSeek never reported — would attribute a bust to a request we
-        # admit we cannot judge (fix-bust-reference-quality). UNKNOWN entries
-        # are skipped so the fallback always lands on a judged neighbor.
-        if entry.tier is not Tier.UNKNOWN:
+        # Only advance last_request_id for entries that actually CACHED
+        # (HIT/PARTIAL). A MISS never established a cacheable prefix, so it must
+        # not become the bust_reference fallback — otherwise, with no prior HIT,
+        # a later genuinely-new-prefix MISS/PARTIAL busts against a never-cached
+        # reference, inflating the central "busted N×" headline on cold-start
+        # all-MISS runs (the sub-case the v0.6.0 fix-identical-prefix-miss-false-bust
+        # left open: that fix's comment said the fallback should be the "last stable
+        # prefix" but still advanced last_request_id for a MISS — fix
+        # fix-new-prefix-miss-busts-against-prior-miss). UNKNOWN entries are also
+        # skipped — one whose cache split DeepSeek never reported would attribute a
+        # bust to a request we admit we cannot judge (fix-bust-reference-quality).
+        if entry.tier in (Tier.HIT, Tier.PARTIAL):
             last_request_id = entry.request_id
         if entry.tier is Tier.HIT:
             last_hit_request_id = entry.request_id
