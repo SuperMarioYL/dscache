@@ -89,6 +89,7 @@ def render_headline(entries: Sequence[CacheLedgerEntry]) -> Panel:
     """
     nums = _headline_numbers(entries)
     busted = nums["busted"]
+    wasting = nums["wasting"]
     total_actual = nums["total_actual"]
     total_ideal = nums["total_ideal"]
     wasted = nums["wasted"]
@@ -99,7 +100,7 @@ def render_headline(entries: Sequence[CacheLedgerEntry]) -> Panel:
     else:
         ratio_str = "n/a"
 
-    if wasted > 0:
+    if wasted > 0 and busted > 0:
         body = Text.assemble(
             ("This run busted the cache ", ""),
             (f"{busted}×", "bold red"),
@@ -108,6 +109,29 @@ def render_headline(entries: Sequence[CacheLedgerEntry]) -> Panel:
             (" what it should — ", ""),
             (f"{_money(wasted)} wasted", "bold red"),
             (".", ""),
+        )
+        border = "red"
+    elif wasted > 0 and busted == 0:
+        # Money was wasted (cache misses) but NO client-side prefix-bust was
+        # detected against a prior stable prefix — e.g. a cold-start run before
+        # any prefix established a hit. The two concepts are different: "busted
+        # N×" means a CLIENT-side prefix divergence against a prior stable
+        # prefix; "wasted ¥" means miss tokens cost money regardless of whether
+        # a prior cached prefix existed to diverge from. The cold-start fixes
+        # (fix-identical-prefix-miss-false-bust / fix-new-prefix-miss-busts-
+        # against-prior-miss) correctly leave busted_against unset here, so
+        # busted == 0 while wasted > 0 — printing "busted the cache 0× ...
+        # ¥Z wasted" would be self-contradictory. Report the waste honestly
+        # without the phantom bust count (fix
+        # fix-headline-busted-zero-contradicts-wasted-money).
+        body = Text.assemble(
+            ("This run wasted ", ""),
+            (f"{_money(wasted)}", "bold red"),
+            (f" across {wasting} cache-miss request(s) — no prefix-bust "
+             f"against a prior stable prefix was detected (cold start; re-run "
+             f"after a cache hit to attribute busts). Cost ", ""),
+            (ratio_str, "bold red"),
+            (" what it should.", ""),
         )
         border = "red"
     else:
@@ -130,11 +154,18 @@ def _headline_numbers(entries: Sequence[CacheLedgerEntry]) -> dict[str, Decimal]
     """
     judged = [e for e in entries if e.tier is not Tier.UNKNOWN]
     busted = sum(Decimal(1) for e in entries if e.busted_against is not None)
+    # Judged requests that actually wasted money (cost_actual > cost_ideal). Used
+    # by the headline's cold-start branch: when money was wasted but NO
+    # client-side prefix-bust was detected (busted == 0), the headline reports
+    # the waste across these miss requests without a phantom "busted 0×" count
+    # (fix fix-headline-busted-zero-contradicts-wasted-money).
+    wasting = sum(Decimal(1) for e in judged if e.wasted > 0)
     total_actual = sum((e.cost_actual for e in judged), Decimal("0"))
     total_ideal = sum((e.cost_ideal for e in judged), Decimal("0"))
     wasted = total_actual - total_ideal
     return {
         "busted": busted,
+        "wasting": wasting,
         "total_actual": total_actual,
         "total_ideal": total_ideal,
         "wasted": wasted,
@@ -163,6 +194,38 @@ def render_compare_delta(
     """
     b = _headline_numbers(baseline)
     c = _headline_numbers(current)
+
+    # A before/after delta is only meaningful when BOTH sides have judged cache
+    # requests (HIT/PARTIAL/MISS). An empty or all-UNKNOWN ledger on either
+    # side leaves total_ideal == 0 (no judged entries), and the money-driven
+    # verdict below would fabricate a "recovered"/"WORSE" panel against
+    # nothing — e.g. an empty current ledger makes recovered_wasted =
+    # b["wasted"] - 0 > 0 and prints a fake "recovered N bust(s) and ¥Z"
+    # panel directly above the report table's "No ledger entries found" line
+    # for the same ledger. Emit an honest hint instead
+    # (fix fix-compare-fabricates-recovery-on-empty-ledger).
+    if b["total_ideal"] == 0 or c["total_ideal"] == 0:
+        if b["total_ideal"] == 0 and c["total_ideal"] == 0:
+            hint = Text(
+                "Neither ledger has judged cache requests — run your agent "
+                "loop and let dscache record at least one HIT/PARTIAL/MISS on "
+                "both sides before comparing.",
+                style="yellow",
+            )
+        else:
+            empty_side = baseline_label if b["total_ideal"] == 0 else current_label
+            hint = Text.assemble(
+                ("Cannot compare — the ", ""),
+                (f"{empty_side}", "bold yellow"),
+                (" ledger has no judged cache requests. Run your agent loop "
+                 "and let dscache record at least one HIT/PARTIAL/MISS on both "
+                 "sides first.", ""),
+            )
+        return Panel(
+            hint,
+            title=f"compare — {baseline_label} → {current_label}",
+            border_style="yellow",
+        )
 
     recovered_wasted = b["wasted"] - c["wasted"]
     # The money sign and the bust sign are independent: a run can waste more ¥

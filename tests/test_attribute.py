@@ -440,3 +440,63 @@ def test_byte_level_attribution_never_mutates_inputs():
     assert messages == [{"role": "system", "content": "s"}]
     assert tools[0]["function"]["name"] == "a"
     assert tools[1]["function"]["name"] == "b"
+
+
+# --- fix-suggest-reorder-names-diverging-segment ----------------------------
+#
+# v0.8.0 tightens suggest_reorder's actionable "Pin X" clause to name the
+# actual diverging segment the attribution already computed, instead of a
+# generic "Pin the system prompt and tool list" that misleads when the bust is
+# in a user message or a specific tool (the v0.7.0 changelog flagged this gap
+# as an open question but did not implement it).
+
+
+def test_suggest_reorder_pins_actual_diverging_user_segment_not_generic():
+    # fix-suggest-reorder-names-diverging-segment: the actionable "Pin X" clause
+    # names the actual diverging segment the attribution computed, not a generic
+    # "Pin the system prompt and tool list". Here the tools AND system message
+    # are identical and the divergence is in the USER message, so the suggestion
+    # must tell the user to pin the user message, not the system prompt.
+    messages_ref = [{"role": "system", "content": "sys"},
+                    {"role": "user", "content": "do X"}]
+    messages_busted = [{"role": "system", "content": "sys"},
+                       {"role": "user", "content": "do Y"}]
+    tools = [_tool("read")]
+    s_ref = _prefix_sample({"messages": messages_ref, "tools": tools})
+    s_busted = _prefix_sample({"messages": messages_busted, "tools": tools})
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": s_ref},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": s_busted},
+    ]
+    suggestion = suggest_reorder(profile(records))
+    assert suggestion is not None
+    assert suggestion.attribution is not None
+    assert suggestion.attribution.segment is not None
+    assert "user" in suggestion.attribution.segment  # divergence is the user msg
+    # The actionable Pin clause names the user segment, not the generic line.
+    assert "Pin user" in suggestion.message
+    assert "system prompt and tool list" not in suggestion.message
+
+
+def test_suggest_reorder_keeps_generic_pin_when_no_client_divergence():
+    # When the attribution found NO client-side divergence (segment is None —
+    # the sampled heads are byte-identical, a server-side eviction that still
+    # registered as a lower-bound bust because the real cache key diverged past
+    # the 2048-char sample), the generic "Pin the system prompt and tool list"
+    # fallback is the honest answer (no specific segment to name).
+    sample = "system:stable\nuser:a"
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": sample},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": sample},  # SAME sampled head
+    ]
+    suggestion = suggest_reorder(profile(records))
+    assert suggestion is not None
+    assert suggestion.attribution is not None
+    assert suggestion.attribution.segment is None  # clean diff / server-side
+    # Generic fallback: no specific segment to name.
+    assert "system prompt and tool list" in suggestion.message
+    assert "Pin user" not in suggestion.message

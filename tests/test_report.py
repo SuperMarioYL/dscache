@@ -12,8 +12,8 @@ from decimal import Decimal
 
 from rich.console import Console
 
-from dscache.profiler import profile
-from dscache.report import render_compare_delta, render_headline
+from dscache.profiler import Tier, profile
+from dscache.report import _headline_numbers, render_compare_delta, render_headline
 
 
 def _baseline_ledger():
@@ -76,12 +76,95 @@ def test_compare_delta_no_change_when_identical():
 
 
 def test_compare_delta_excludes_unknown_from_both_sides():
-    # UNKNOWN-tier entries must not fabricate recovered ¥ on either side.
+    # UNKNOWN-tier entries must not fabricate a recovered/¥ verdict on either
+    # side. With fix-compare-fabricates-recovery-on-empty-ledger, a ledger with
+    # NO judged requests (empty or all-UNKNOWN) on either side no longer drives
+    # a money-driven verdict at all — it emits an honest "no judged" hint, so
+    # all-UNKNOWN data can never fabricate a fake recovery/regression.
     unknown_only = [{"request_id": f"r{i}", "prompt_tokens": 4000} for i in range(3)]
     baseline = profile(unknown_only)
     current = profile(unknown_only)
     rendered = _render(render_compare_delta(baseline, current))
-    assert "no change" in rendered.lower()  # zero judged waste on both sides
+    assert "no judged" in rendered.lower() or "neither" in rendered.lower()
+    assert "recovered" not in rendered.lower()
+    assert "worse" not in rendered.lower()
+
+
+# --- fix-headline-busted-zero-contradicts-wasted-money -----------------------
+
+
+def test_headline_cold_start_miss_no_phantom_busted_zero():
+    # fix-headline-busted-zero-contradicts-wasted-money: after the v0.6.0/v0.7.0
+    # cold-start fixes, a genuine MISS with no prior stable prefix leaves
+    # busted_against unset (busted == 0) while wasted > 0. The old headline had
+    # only a `wasted > 0` branch that unconditionally printed "busted the cache
+    # 0× ... ¥Z wasted" — self-contradictory (a bust count of zero next to a
+    # non-zero wasted figure). The fix adds a third branch that reports the
+    # waste honestly without the phantom bust count.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:a\nuser:b"},
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.MISS
+    assert entries[0].busted_against is None  # cold start, no prior stable prefix
+    nums = _headline_numbers(entries)
+    assert nums["busted"] == 0
+    assert nums["wasted"] > Decimal("0")
+    rendered = _render(render_headline(entries))
+    assert "wasted" in rendered.lower()
+    # The self-contradictory "busted the cache 0×" clause is gone.
+    assert "busted the cache 0" not in rendered.lower()
+    # The honest cold-start language surfaces instead.
+    assert "no prefix-bust" in rendered.lower()
+    assert "cold start" in rendered.lower()
+
+
+def test_headline_busted_count_still_shown_when_real_busts_exist():
+    # Regression guard for fix-headline-busted-zero-contradicts-wasted-money:
+    # the existing "busted N× ... ¥Z wasted" branch is unchanged when real
+    # client-side busts exist (busted > 0 AND wasted > 0). A run with a prior HIT
+    # and a genuine prefix-bust MISS must still print the bust count.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": "system:stable\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:CHANGED\nuser:a"},
+    ]
+    entries = profile(records)
+    nums = _headline_numbers(entries)
+    assert nums["busted"] == 1 and nums["wasted"] > Decimal("0")
+    rendered = _render(render_headline(entries))
+    assert "busted the cache 1" in rendered.lower()
+    assert "wasted" in rendered.lower()
+
+
+# --- fix-compare-fabricates-recovery-on-empty-ledger -------------------------
+
+
+def test_compare_delta_empty_current_no_fake_recovery():
+    # fix-compare-fabricates-recovery-on-empty-ledger: an empty/missing current
+    # ledger used to make recovered_wasted = baseline_wasted - 0 > 0 and print a
+    # fake "recovered N bust(s) and ¥Z" panel directly above the report table's
+    # "No ledger entries found" line for the same ledger. The fix guards: when
+    # either side has no judged requests, emit an honest hint instead.
+    baseline = profile(_baseline_ledger())  # r1 HIT, r2 MISS bust -> has waste
+    current = profile([])  # empty current ledger
+    rendered = _render(render_compare_delta(baseline, current))
+    assert "no judged" in rendered.lower()
+    assert "recovered" not in rendered.lower()
+    assert "worse" not in rendered.lower()
+
+
+def test_compare_delta_empty_baseline_no_fake_worse():
+    # Mirror of the empty-current case: an empty baseline with a waste-bearing
+    # current used to fabricate a "Cache got WORSE" panel against nothing.
+    baseline = profile([])
+    current = profile(_baseline_ledger())  # has waste
+    rendered = _render(render_compare_delta(baseline, current))
+    assert "no judged" in rendered.lower()
+    assert "worse" not in rendered.lower()
+    assert "recovered" not in rendered.lower()
 
 
 def test_compare_delta_reuses_headline_numbers():
