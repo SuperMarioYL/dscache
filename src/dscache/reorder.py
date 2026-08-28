@@ -42,6 +42,27 @@ def worst_bust(entries: Sequence[CacheLedgerEntry]) -> Optional[CacheLedgerEntry
     return max(busted, key=lambda e: e.wasted)
 
 
+def _pin_clause(attribution: SegmentAttribution, busted_against: Optional[str]) -> str:
+    """Build the actionable 'Pin X' clause for a bust suggestion.
+
+    Names the ACTUAL diverging segment the attribution already computed (e.g.
+    ``user (segment[2])`` / ``tools[1]``) so the user fixes the segment that
+    diverged, not a generic ``system prompt and tool list`` that misleads when
+    the bust is in a user message or a specific tool. Falls back to the generic
+    line only when no client-side divergence was located (``segment is None`` —
+    a clean diff / server-side eviction), the honest answer when no specific
+    segment diverged (fix fix-suggest-reorder-names-diverging-segment).
+    """
+    ref = busted_against or "the prior cached request"
+    tail = (
+        " (move any per-call dynamic content, e.g. timestamps, below the "
+        "stable prefix) to recover the cache discount."
+    )
+    if attribution.segment is not None:
+        return f"Pin {attribution.segment} to the exact byte order used in {ref}{tail}"
+    return f"Pin the system prompt and tool list to the exact byte order used in {ref}{tail}"
+
+
 def suggest_reorder(entries: Sequence[CacheLedgerEntry]) -> Optional[ReorderSuggestion]:
     """Produce a reorder suggestion for the worst bust in the ledger.
 
@@ -69,10 +90,8 @@ def suggest_reorder(entries: Sequence[CacheLedgerEntry]) -> Optional[ReorderSugg
 
     message = (
         f"Request {target.request_id} {tier_note} — its leading prompt span "
-        f"diverged from request {target.busted_against}. Pin the system prompt "
-        f"and tool list to the exact byte order used in {target.busted_against} "
-        f"(move any per-call dynamic content, e.g. timestamps, below the stable "
-        f"prefix) to recover the cache discount.\n"
+        f"diverged from request {target.busted_against}. "
+        f"{_pin_clause(attribution, target.busted_against)}\n"
         f"{attribution.message}"
     )
 

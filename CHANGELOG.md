@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.8.0
+
+A continuation of the honesty/correctness-deepening arc (amend-dscache-v0.8.0).
+Three `type:fix` milestones close contradictions and gaps the prior honesty
+fixes themselves surfaced or the v0.7.0 changelog flagged — all in the
+report/suggestion path, no new primitive, no server, no scope drift.
+
+### Fixes
+
+- **The money headline no longer prints a self-contradictory "busted the cache
+  0×" next to wasted spend.** After the v0.6.0/v0.7.0 cold-start fixes, a
+  genuine MISS with no prior stable prefix correctly leaves `busted_against`
+  unset, so the bust count is 0 while wasted ¥ is positive. The old headline
+  had only a `wasted > 0` branch that unconditionally opened with "busted the
+  cache {busted}×", so it read "busted the cache 0× ... ¥Z wasted" — a bust
+  count of zero next to a non-zero wasted figure. The two concepts are
+  different: "busted N×" means a CLIENT-side prefix divergence against a prior
+  stable prefix; "wasted ¥" means miss tokens cost money regardless. A new
+  third branch reports the waste honestly across the miss requests without the
+  phantom bust count (cold start; re-run after a cache hit to attribute busts).
+  The two existing branches (real busts; cache held stable) are unchanged.
+
+- **`dscache report --compare` no longer fabricates a "recovered" panel when
+  one side has no judged cache requests.** `render_compare_delta` drove its
+  verdict off `recovered_wasted = baseline_wasted - current_wasted` with no
+  guard for an empty side. An empty or all-UNKNOWN current ledger
+  (`current_wasted == 0`) made `recovered_wasted > 0` for any baseline that had
+  waste, printing a fake "recovered N bust(s) and ¥Z" panel directly above the
+  report table's "No ledger entries found" line for the same ledger (the mirror
+  case fabricated a "WORSE" panel against an empty baseline). The fix guards:
+  when either side has no judged requests, it emits an honest "no judged cache
+  requests" hint instead of a verdict — a before/after delta requires judged
+  requests on both sides.
+
+- **`suggest_reorder`'s actionable "Pin X" line names the actual diverging
+  segment the attribution already computed.** The suggestion hard-coded "Pin
+  the system prompt and tool list" regardless of where `attribute_bust` located
+  the divergence, so a bust in a USER message (attribution segment
+  `user (segment[2])`) was met with "Pin the system prompt and tool list" —
+  fixing the wrong segment. The v0.7.0 changelog flagged this as an open
+  question but did not implement it. The "Pin X" clause now references the
+  attribution's segment when one was found (`Pin user (segment[2]) to the exact
+  byte order used in r1` / `Pin tools[1]...`), falling back to the generic line
+  only when no client-side divergence was located (a clean diff / server-side
+  eviction). Detect-only; never mutates the request.
+
 ## v0.7.0
 
 A continuation of the honesty/correctness-deepening arc. One `type:fix`
