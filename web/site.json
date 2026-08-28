@@ -15,8 +15,8 @@
       "en": "Your DeepSeek agent silently overpays every loop\n— one busted prefix drops a whole cached segment back to full price"
     },
     "sub": {
-      "zh": "dscache 回放你的请求日志，读 DeepSeek 真正上报的缓存命中与未命中，逐请求定档 HIT/PARTIAL/MISS，把每一次前缀打爆和它漏掉的人民币变成一张能看、能算、能修的利润表。采样在段边界裁切——不把工具块切成两半，多行消息也指得到真正变了的那一段；打爆只归因到真正命中过的前缀，绝不甩锅给 MISS；浪费的 ¥ 既不多记也不少记，两边都对得上账单；改完用 dscache report --compare baseline.jsonl 一张面板看到省回了多少。给跑 DeepSeek Agent 循环、却在账单里找不到那笔超支的人。",
-      "en": "dscache replays your request log, reads the cache hit and miss tokens DeepSeek actually reports, and tiers each request HIT/PARTIAL/MISS — turning every prefix bust and the CNY it leaks into a profit & loss you can read, price, and fix. The sample is cut at segment boundaries — it never slices a tool block in half, and a multi-line message still names the segment that actually changed; a bust is pinned only to a prefix that actually cached, never to a MISS; the wasted CNY is neither overstated nor understated, reconciling with your bill in both directions; and after you fix it, dscache report --compare baseline.jsonl shows the CNY recovered in one panel. For anyone running a DeepSeek agent loop who can't find that overspend on their bill."
+      "zh": "dscache 回放你的请求日志，读 DeepSeek 真正上报的缓存命中与未命中，逐请求定档 HIT/PARTIAL/MISS，把每一次前缀打爆和它漏掉的人民币变成一张能看、能算、能修的利润表。采样在段边界裁切——不把工具块切成两半，多行消息也指得到真正变了的那一段，重排建议也据此告诉你该钉哪一段；打爆只归因到真正命中过的前缀，绝不甩锅给 MISS，冷启动浪费了 ¥ 也不会挂一个自相矛盾的「打爆 0×」；浪费的 ¥ 既不多记也不少记，两边都对得上账单；改完用 dscache report --compare baseline.jsonl 一张面板看到省回了多少，没得比的时候也不会凭空造一张假面板。给跑 DeepSeek Agent 循环、却在账单里找不到那笔超支的人。",
+      "en": "dscache replays your request log, reads the cache hit and miss tokens DeepSeek actually reports, and tiers each request HIT/PARTIAL/MISS — turning every prefix bust and the CNY it leaks into a profit & loss you can read, price, and fix. The sample is cut at segment boundaries — it never slices a tool block in half, a multi-line message still names the segment that actually changed, and the reorder suggestion tells you exactly which segment to pin; a bust is pinned only to a prefix that actually cached, never to a MISS, and a cold-start run that wastes ¥ no longer prints a self-contradictory 'busted 0×' beside it; the wasted CNY is neither overstated nor understated, reconciling with your bill in both directions; and after you fix it, dscache report --compare baseline.jsonl shows the CNY recovered in one panel — and when there's nothing to compare, it won't fabricate one. For anyone running a DeepSeek agent loop who can't find that overspend on their bill."
     },
     "command": "dscache report",
     "cta": { "zh": "开始使用", "en": "Get started" },
@@ -24,15 +24,16 @@
   },
   "advantages": [
     {
-      "title": { "zh": "打爆指得到真正变了的那一段，多行消息也不碎", "en": "A bust names the segment that actually changed — multi-line messages don't shatter it" },
+      "title": { "zh": "打爆指得到真正变了的那一段，建议也点名该钉哪儿", "en": "A bust names the segment that changed — and the suggestion tells you exactly what to pin" },
       "body": {
-        "zh": "前缀指纹的字符预算以前只在消息循环里管，最后再来一刀截断——工具列表占满预算的编码 Agent，采样正好停在一个工具块中间，段级归因拿到一截残段；而消息内容以前是原文嵌进指纹的，一段带换行的系统提示（编码 Agent 的常态）会被切碎成一串 segment[K] 残段，打爆报告只报一个无意义的稳定段，指不到真正变了的那条消息。现在预算跨所有段（工具、工具选择、响应格式、消息）增量推进，会溢出剩余预算的段直接不追加，没有任何段被从中间截断；消息内容也改成和工具一样的序列化方式，换行被转义成干净的段分隔符，发散的那一段会真正点名是哪条消息，而不是 segment[K]。",
-        "en": "The prefix-fingerprint char budget used to be enforced only inside the messages loop, then a final truncating slice — for a coding agent whose tool list eats the whole budget, the sample landed mid-tool and segment attribution got a stub; and message content was embedded raw, so a multi-line system prompt (the coding-agent norm) was shattered into a string of segment[K] stubs and a bust reported a meaningless stable segment instead of naming the message that changed. The budget now advances incrementally across every segment (tools, tool_choice, response_format, messages) — a segment that would overflow the remaining budget is never appended, so no segment is ever cut in half; and message content is serialized the same way tools already were, so a newline becomes a clean segment separator and the diverging segment names the actual message, not segment[K]."
+        "zh": "前缀指纹的字符预算以前只在消息循环里管，最后再来一刀截断——工具列表占满预算的编码 Agent，采样正好停在一个工具块中间，段级归因拿到一截残段；而消息内容以前是原文嵌进指纹的，一段带换行的系统提示（编码 Agent 的常态）会被切碎成一串 segment[K] 残段，打爆报告只报一个无意义的稳定段，指不到真正变了的那条消息。现在预算跨所有段（工具、工具选择、响应格式、消息）增量推进，会溢出剩余预算的段直接不追加，没有任何段被从中间截断；消息内容也改成和工具一样的序列化方式，换行被转义成干净的段分隔符，发散的那一段会真正点名是哪条消息，而不是 segment[K]。而重排建议也据此点名该钉的那一段——是哪条用户消息、还是哪个工具块——不再笼统地说「钉住系统提示」，让你改的正是真正变了的地方。",
+        "en": "The prefix-fingerprint char budget used to be enforced only inside the messages loop, then a final truncating slice — for a coding agent whose tool list eats the whole budget, the sample landed mid-tool and segment attribution got a stub; and message content was embedded raw, so a multi-line system prompt (the coding-agent norm) was shattered into a string of segment[K] stubs and a bust reported a meaningless stable segment instead of naming the message that changed. The budget now advances incrementally across every segment (tools, tool_choice, response_format, messages) — a segment that would overflow the remaining budget is never appended, so no segment is ever cut in half; and message content is serialized the same way tools already were, so a newline becomes a clean segment separator and the diverging segment names the actual message, not segment[K]. And the reorder suggestion now names that exact segment to pin — which user message, or which tool block — instead of a generic 'pin the system prompt', so you fix what actually changed."
       },
       "chips": [
         "› 段边界增量裁切",
         "› 多行消息不再碎成残段",
-        "› 指得到变了的那条消息"
+        "› 指得到变了的那条消息",
+        "› 建议点名该钉的那一段"
       ]
     },
     {
@@ -48,27 +49,29 @@
       ]
     },
     {
-      "title": { "zh": "打爆只归因到真正命中过的前缀，不甩锅给 MISS", "en": "A bust is pinned to a prefix that actually cached — never to a MISS" },
+      "title": { "zh": "打爆只归因到真正命中过的前缀，头条也不报假的打爆次数", "en": "A bust is pinned to a prefix that actually cached — and the headline never fakes a bust count" },
       "body": {
-        "zh": "一个 MISS 本就没缓存过，它既不该当一个「稳定前缀」的主人，也不该当后面请求打爆时回退的参照——可旧逻辑两样都让它干了：先把它注册成主人，于是后面一条采样头相同的请求（也是 MISS）就被对一个不稳定的主人判了打爆；又让回退游标在它身上推进，于是一轮还没命中过任何前缀的冷启动里，后面一条换了前缀的 MISS 会被对到前一条 MISS，凭空多记一次打爆，重排建议还让你去钉一个自己都不缓存的前缀。现在只有 HIT/PARTIAL 才注册为主人和游标参照——打爆指向的永远是真正缓存过的那一条，连冷启动整轮没命中过的情况也不再虚报打爆，建议也就不会再指错。",
-        "en": "A MISS never cached, so it's neither a rightful owner of a 'stable' prefix NOR the fallback reference a later bust resolves to — yet the old logic let it be both: it registered MISSes as owners, so a later request with the same sampled head (also a MISS) was busted against an unstable owner; and it advanced the fallback cursor through a MISS, so on a cold-start run where nothing had cached yet, a later different-prefix MISS was pinned to the prior MISS, fabricating a bust, and the reorder suggestion told you to pin to a prefix that itself didn't cache. Now only HIT/PARTIAL entries register as owners AND as the fallback reference — a bust always points back to a request that actually cached, and even a cold-start run that never landed a hit reports zero busts (nothing cached, nothing to have diverged from), so the suggestion never points you wrong."
+        "zh": "一个 MISS 本就没缓存过，它既不该当一个「稳定前缀」的主人，也不该当后面请求打爆时回退的参照——可旧逻辑两样都让它干了：先把它注册成主人，于是后面一条采样头相同的请求（也是 MISS）就被对一个不稳定的主人判了打爆；又让回退游标在它身上推进，于是一轮还没命中过任何前缀的冷启动里，后面一条换了前缀的 MISS 会被对到前一条 MISS，凭空多记一次打爆，重排建议还让你去钉一个自己都不缓存的前缀。现在只有 HIT/PARTIAL 才注册为主人和游标参照——打爆指向的永远是真正缓存过的那一条，连冷启动整轮没命中过的情况也不再虚报打爆，建议也就不会再指错。而头条也分清两件事——「打爆 N×」是客户端前缀真的对某条命中过的前缀发生了发散；「浪费的 ¥」是只要有未命中就会产生。冷启动整轮没命中时，哪怕确实浪费了 ¥，头条也只报那笔浪费，绝不旁边挂一个自相矛盾的「打爆 0×」。",
+        "en": "A MISS never cached, so it's neither a rightful owner of a 'stable' prefix NOR the fallback reference a later bust resolves to — yet the old logic let it be both: it registered MISSes as owners, so a later request with the same sampled head (also a MISS) was busted against an unstable owner; and it advanced the fallback cursor through a MISS, so on a cold-start run where nothing had cached yet, a later different-prefix MISS was pinned to the prior MISS, fabricating a bust, and the reorder suggestion told you to pin to a prefix that itself didn't cache. Now only HIT/PARTIAL entries register as owners AND as the fallback reference — a bust always points back to a request that actually cached, and even a cold-start run that never landed a hit reports zero busts (nothing cached, nothing to have diverged from), so the suggestion never points you wrong. And the headline keeps the two apart — 'busted N×' means a client-side prefix actually diverged from a prior cached prefix; 'wasted ¥' accrues from any miss. On a cold-start run that never landed a hit, even when it does waste ¥, the headline reports only that waste — never a self-contradictory 'busted 0×' beside it."
       },
       "chips": [
         "› 只 HIT/PARTIAL 当主人",
         "› MISS 不当回退参照",
-        "› 冷启动不虚报打爆"
+        "› 冷启动不虚报打爆",
+        "› 头条不挂假的打爆次数"
       ]
     },
     {
       "title": { "zh": "改完一键对账：省回了多少打爆、多少 ¥", "en": "One-command before/after: busts recovered, CNY recovered" },
       "body": {
-        "zh": "跑一轮 Agent 循环，照重排建议改完前缀，再跑一轮，然后 dscache report --compare baseline.jsonl 一张面板看到省回的打爆次数、省回的 ¥、成本比下降。这是那张可分享的「前后账单」对比，现在一条命令。诚实保留：面板写的是「省回」不是「省下」——dscache 没法证明你真的钉住了前缀（你可能改了 prompt 或重跑），它只报告当前账本里被判定为打爆的请求比基线少浪费了多少 ¥。",
-        "en": "Run your agent loop, apply the reorder suggestion to fix the prefix, re-run, then dscache report --compare baseline.jsonl — one panel shows the recovered busts, recovered ¥, and cost-ratio drop. It's the shareable before/after-bill writeup, now one command. Honesty-preserving: the panel says 'recovered', not 'saved' — dscache can't prove you pinned the prefix (you may have changed the prompt or re-run); it reports only that the judged requests in the current ledger wasted less ¥ than the baseline."
+        "zh": "跑一轮 Agent 循环，照重排建议改完前缀，再跑一轮，然后 dscache report --compare baseline.jsonl 一张面板看到省回的打爆次数、省回的 ¥、成本比下降。这是那张可分享的「前后账单」对比，现在一条命令。诚实保留：面板写的是「省回」不是「省下」——dscache 没法证明你真的钉住了前缀（你可能改了 prompt 或重跑），它只报告当前账本里被判定为打爆的请求比基线少浪费了多少 ¥。而当某一侧还没有可判定的请求（空账本或全是 UNKNOWN），它不会凭空造一张「省回 N 次、省回 ¥X」的面板——它会直接告诉你先把两边都跑起来再比，绝不拿一张空账本糊弄出假的省回。",
+        "en": "Run your agent loop, apply the reorder suggestion to fix the prefix, re-run, then dscache report --compare baseline.jsonl — one panel shows the recovered busts, recovered ¥, and cost-ratio drop. It's the shareable before/after-bill writeup, now one command. Honesty-preserving: the panel says 'recovered', not 'saved' — dscache can't prove you pinned the prefix (you may have changed the prompt or re-run); it reports only that the judged requests in the current ledger wasted less ¥ than the baseline. And when one side has no judged requests yet (an empty ledger or all-UNKNOWN), it won't fabricate a 'recovered N busts, ¥X' panel — it tells you to run both sides first, never dressing up an empty ledger as a fake recovery."
       },
       "chips": [
         "› dscache report --compare",
         "› 省回打爆 / 省回 ¥",
-        "› 写省回 不写省下"
+        "› 写省回 不写省下",
+        "› 没得比就不造假的省回"
       ]
     }
   ],
@@ -94,8 +97,8 @@
     }
   },
   "meta": {
-    "content_version": "v0.7.0",
-    "generated_at": "2026-08-09T05:10:00Z",
+    "content_version": "v0.8.0",
+    "generated_at": "2026-08-28T04:42:00Z",
     "web_factory_ref": "v1.1"
   }
 }
