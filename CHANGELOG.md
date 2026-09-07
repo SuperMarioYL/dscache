@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.9.0
+
+A continuation of the honesty/correctness-deepening arc (amend-dscache-v0.9.0).
+Two `type:fix` milestones extend the v0.8.0 "do not fabricate a verdict on
+unjudgeable data" guard from the dual-ledger `--compare` path to the two
+single-ledger surfaces it did not reach: the money headline and the `suggest`
+command. No new primitive, no server, no scope drift.
+
+### Fixes
+
+- **The money headline no longer fabricates "Cache held stable — your prefix
+  discount is intact" for a run dscache could not judge.** When every request is
+  UNKNOWN (DeepSeek never surfaced the cache-hit/miss fields), the v0.1
+  `fix-unknown-tier-fabricates-wasted-money` correctly collapsed each UNKNOWN
+  entry's `cost_ideal` onto `cost_actual` so it contributes zero waste — but as
+  a side effect the headline fell into the "Cache held stable" branch and
+  printed a positive verdict ("your prefix discount is intact") on data dscache
+  admits it cannot judge. This is the single-ledger analogue of the v0.8.0
+  `fix-compare-fabricates-recovery-on-empty-ledger` fabrication (a verdict on
+  zero-judged-requests data is dishonest). The fix adds a zero-judged-requests
+  guard (`total_ideal == 0`, the same discriminator the compare-empty guard
+  uses — a JUDGED entry always has `cost_ideal = prompt_tokens * hit_rate > 0`)
+  that emits an honest "No judged cache requests — DeepSeek did not surface the
+  cache-hit/miss fields for any request in this run" hint instead. The existing
+  three branches (real busts; cold-start waste; genuine all-HIT stable) are
+  unchanged, so a real all-HIT run still honestly prints "Cache held stable".
+
+- **`dscache suggest` no longer fabricates "your prefix is stable" when it has
+  no evidence of stability.** The command printed "No cache-bust detected —
+  your prefix is stable." whenever `suggest_reorder` returned `None`, but "no
+  bust" and "your prefix is stable" are different claims, and the second was
+  fabricated in two cases: an all-UNKNOWN run (cannot judge stability), and a
+  cold-start all-MISS run that wasted money with no prior stable prefix to bust
+  against (the v0.6.0/v0.7.0 cold-start fixes correctly suppressed the phantom
+  bust, so `suggest_reorder` is `None` even though money was wasted). For the
+  cold-start case the `suggest` command directly contradicted the same run's
+  headline, which honestly said "wasted ¥X … cold start". The fix branches on
+  the judged-requests state via the same `_headline_numbers` the headline uses:
+  all-UNKNOWN → "could not judge any request"; cold-start waste → "no
+  prefix-bust against a prior stable prefix (cold start) — but this run wasted
+  ¥X"; genuine stability (judged, zero waste, zero busts) → keep "your prefix
+  is stable". `dscache suggest` now never contradicts `dscache report` for the
+  same ledger.
+
 ## v0.8.0
 
 A continuation of the honesty/correctness-deepening arc (amend-dscache-v0.8.0).

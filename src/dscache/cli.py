@@ -20,7 +20,7 @@ from rich.console import Console
 
 from . import __version__
 from .profiler import load_ledger, profile
-from .reorder import suggest_reorder
+from .reorder import no_bust_note, suggest_reorder
 from .report import render_compare_delta, render_report
 from .wrapper import DEFAULT_LEDGER_PATH, append_record
 
@@ -87,7 +87,17 @@ def suggest(
     entries = profile(load_ledger(ledger))
     suggestion = suggest_reorder(entries)
     if suggestion is None:
-        console.print("[green]No cache-bust detected — your prefix is stable.[/green]")
+        # No entry has busted_against set. But "no bust" and "your prefix is
+        # stable" are different claims, and the second is fabricated when
+        # dscache has no evidence of stability: an all-UNKNOWN run (cannot
+        # judge) or a cold-start run that wasted money with no prior stable
+        # prefix to bust against. no_bust_note branches on the judged-requests
+        # state via the same numbers the money headline uses, so `dscache suggest`
+        # never contradicts `dscache report` for the same ledger (fix
+        # fix-suggest-fabricates-stable-on-no-bust).
+        note, stable = no_bust_note(entries)
+        style = "green" if stable else "yellow"
+        console.print(f"[{style}]{note}[/{style}]")
         raise typer.Exit()
     console.print(f"[bold red]Worst bust:[/bold red] {suggestion.request_id}")
     console.print(f"[dim]wasted ¥{suggestion.wasted:.4f}[/dim]")

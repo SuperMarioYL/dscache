@@ -139,6 +139,53 @@ def test_headline_busted_count_still_shown_when_real_busts_exist():
     assert "wasted" in rendered.lower()
 
 
+# --- fix-headline-fabricates-stable-on-all-unknown-ledger -------------------
+
+
+def test_headline_all_unknown_no_fake_stable():
+    # fix-headline-fabricates-stable-on-all-unknown-ledger: a run where DeepSeek
+    # never surfaced the cache-hit/miss fields (every request UNKNOWN) used to
+    # print "Cache held stable — ¥0 wasted. Your prefix discount is intact." —
+    # a fabricated POSITIVE verdict on data dscache admits it cannot judge, the
+    # single-ledger analogue of the v0.8.0 compare-empty fabrication. The fix
+    # adds a zero-judged-requests guard (total_ideal == 0) that emits an honest
+    # "no judged cache requests" hint instead.
+    records = [
+        {"request_id": f"r{i}", "prompt_tokens": 4000} for i in range(3)
+    ]
+    entries = profile(records)
+    assert all(e.tier is Tier.UNKNOWN for e in entries)
+    nums = _headline_numbers(entries)
+    assert nums["total_ideal"] == Decimal("0")  # zero judged requests
+    rendered = _render(render_headline(entries))
+    assert "no judged" in rendered.lower()
+    assert "Cache held stable" not in rendered
+    assert "discount is intact" not in rendered
+    # No phantom money on unjudgeable data.
+    assert "wasted" not in rendered.lower() or "¥0" in rendered
+
+
+def test_headline_guard_does_not_fire_on_real_busts():
+    # Regression guard for fix-headline-fabricates-stable-on-all-unknown-ledger:
+    # the zero-judged-requests guard (total_ideal == 0) must NOT over-fire when
+    # judged requests exist. A run with a real HIT + a real MISS bust still
+    # prints the bust (total_ideal > 0, so the guard is skipped and the
+    # existing "busted the cache N× ... wasted" branch runs unchanged).
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 980,
+         "miss_tokens": 20, "prefix_sample": "system:stable\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:CHANGED\nuser:a"},
+    ]
+    entries = profile(records)
+    nums = _headline_numbers(entries)
+    assert nums["total_ideal"] > Decimal("0")  # judged requests exist
+    assert nums["busted"] == 1
+    rendered = _render(render_headline(entries))
+    assert "busted the cache 1" in rendered.lower()
+    assert "no judged" not in rendered.lower()
+
+
 # --- fix-compare-fabricates-recovery-on-empty-ledger -------------------------
 
 

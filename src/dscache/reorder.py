@@ -18,6 +18,7 @@ from typing import Optional, Sequence
 
 from .attribute import SegmentAttribution, attribute_bust
 from .profiler import CacheLedgerEntry, Tier
+from .report import _headline_numbers
 
 
 @dataclass
@@ -102,6 +103,48 @@ def suggest_reorder(entries: Sequence[CacheLedgerEntry]) -> Optional[ReorderSugg
         message=message,
         attribution=attribution,
     )
+
+
+def no_bust_note(entries: Sequence[CacheLedgerEntry]) -> tuple[str, bool]:
+    """Context-aware message for when no prefix-bust was detected.
+
+    :func:`suggest_reorder` returns ``None`` whenever no entry has
+    ``busted_against`` set, but "no bust" and "your prefix is stable" are
+    different claims. The second is fabricated when dscache has no evidence of
+    stability — an all-UNKNOWN run (DeepSeek never reported the cache split, so
+    dscache cannot judge hit/miss for any request) or a cold-start run that
+    wasted money with no prior stable prefix to bust against (the v0.6.0/v0.7.0
+    cold-start fixes correctly suppressed the phantom bust, so suggest_reorder
+    is ``None`` even though money was wasted — and the money headline honestly
+    says so). Branch on the judged-requests state via the same
+    :func:`_headline_numbers` the money headline uses, so ``dscache suggest``
+    never contradicts ``dscache report`` for the same ledger (fix
+    fix-suggest-fabricates-stable-on-no-bust).
+
+    Returns
+    -------
+    (message, is_genuinely_stable)
+        ``is_genuinely_stable`` is ``True`` only when the run has judged
+        requests with zero waste and zero busts — the one case where "your
+        prefix is stable" is honest.
+    """
+    nums = _headline_numbers(entries)
+    if nums["total_ideal"] == 0:
+        return (
+            "No client-side prefix-bust detected — but dscache could not judge "
+            "any request (DeepSeek did not report cache-hit/miss fields). Wrap "
+            "your client with dscache.wrap(client) and re-run after DeepSeek "
+            "surfaces the cache split to see HIT/PARTIAL/MISS.",
+            False,
+        )
+    if nums["wasted"] > 0:
+        return (
+            f"No client-side prefix-bust detected against a prior stable prefix "
+            f"(cold start) — but this run wasted ¥{nums['wasted']:.4f}. Re-run "
+            f"after a cache hit so dscache can attribute busts.",
+            False,
+        )
+    return ("No cache-bust detected — your prefix is stable.", True)
 
 
 def _entry_by_id(

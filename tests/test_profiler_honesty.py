@@ -83,14 +83,28 @@ def test_unknown_tier_contributes_zero_waste():
 
 def test_headline_excludes_unknown_from_wasted_and_ratio():
     # A run of nothing-but-UNKNOWN must NOT print a large wasted/4.00x ratio.
+    # fix-headline-fabricates-stable-on-all-unknown-ledger (v0.9.0): the v0.1
+    # fix-unknown-tier-fabricates-wasted-money collapsed cost_ideal onto
+    # cost_actual for UNKNOWN entries so they contribute zero waste, which as a
+    # SIDE EFFECT made the headline fall into the "Cache held stable" branch —
+    # fabricating a POSITIVE verdict ("your prefix discount is intact") on data
+    # dscache admits it cannot judge (every request UNKNOWN). The v0.9.0 fix
+    # extends the v0.8.0 compare-empty honesty guard to the single-ledger
+    # headline: zero judged requests (total_ideal == 0) emits an honest "no
+    # judged cache requests" hint instead of "Cache held stable". The primary
+    # no-phantom-money intent (no wasted ¥) is preserved.
     records = [
         {"request_id": f"r{i}", "prompt_tokens": 4000} for i in range(5)
     ]
     entries = profile(records)
     panel = render_headline(entries)
     rendered = _render(panel)
+    # No phantom wasted ¥ on data we cannot judge.
     assert "wasted" not in rendered.lower() or "¥0" in rendered
-    assert "Cache held stable" in rendered
+    # The fabricated "Cache held stable ... discount is intact" verdict is gone.
+    assert "Cache held stable" not in rendered
+    # The honest "no judged cache requests" hint surfaces instead.
+    assert "no judged" in rendered.lower()
 
 
 def test_headline_unknown_does_not_dilute_real_bust():

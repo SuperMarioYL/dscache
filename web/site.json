@@ -97,8 +97,8 @@
     }
   },
   "meta": {
-    "content_version": "v0.8.0",
-    "generated_at": "2026-08-28T04:42:00Z",
+    "content_version": "v0.9.0",
+    "generated_at": "2026-09-08T03:30:00Z",
     "web_factory_ref": "v1.1"
   }
 }

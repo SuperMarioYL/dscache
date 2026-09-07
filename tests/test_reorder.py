@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dscache.profiler import profile
-from dscache.reorder import suggest_reorder, worst_bust
+from dscache.reorder import no_bust_note, suggest_reorder, worst_bust
 from dscache.wrapper import wrap
 
 
@@ -129,3 +129,57 @@ def _load(path):
     import json
 
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+# --- fix-suggest-fabricates-stable-on-no-bust -------------------------------
+
+
+def test_no_bust_note_cold_start_miss_is_not_stable():
+    # fix-suggest-fabricates-stable-on-no-bust: a cold-start all-MISS run
+    # wastes money but has no prior stable prefix to bust against, so
+    # suggest_reorder returns None. The old cli unconditionally printed "your
+    # prefix is stable" — fabricated (the prefix never cached) and contradicting
+    # the same run's headline ("wasted ¥ ... cold start"). no_bust_note must
+    # NOT claim stability here.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:a\nuser:b"},
+    ]
+    entries = profile(records)
+    assert suggest_reorder(entries) is None  # no bust to suggest for
+    note, stable = no_bust_note(entries)
+    assert stable is False
+    assert "your prefix is stable" not in note
+    assert "cold start" in note.lower()
+    assert "wasted" in note.lower()
+
+
+def test_no_bust_note_all_unknown_is_not_stable():
+    # A run dscache could not judge at all (all-UNKNOWN) must not claim
+    # "your prefix is stable" — there is no evidence of stability. The honest
+    # "could not judge" note surfaces instead.
+    records = [
+        {"request_id": f"r{i}", "prompt_tokens": 4000} for i in range(3)
+    ]
+    entries = profile(records)
+    assert suggest_reorder(entries) is None
+    note, stable = no_bust_note(entries)
+    assert stable is False
+    assert "your prefix is stable" not in note
+    assert "could not judge" in note.lower() or "cache-hit/miss" in note.lower()
+
+
+def test_no_bust_note_zero_waste_run_is_stable():
+    # A genuinely stable run (judged HITs, zero miss tokens, zero waste, zero
+    # busts) is the ONE case where "your prefix is stable" is honest — keep it.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 1000,
+         "miss_tokens": 0, "prefix_sample": "system:stable\nuser:a"},
+        {"request_id": "r2", "prompt_tokens": 1000, "cached_tokens": 1000,
+         "miss_tokens": 0, "prefix_sample": "system:stable\nuser:a"},
+    ]
+    entries = profile(records)
+    assert suggest_reorder(entries) is None
+    note, stable = no_bust_note(entries)
+    assert stable is True
+    assert "your prefix is stable" in note

@@ -100,6 +100,30 @@ def render_headline(entries: Sequence[CacheLedgerEntry]) -> Panel:
     else:
         ratio_str = "n/a"
 
+    # Zero judged cache requests: every entry is UNKNOWN (DeepSeek never
+    # surfaced the cache-hit/miss fields), so dscache cannot judge hit vs miss
+    # for any request. Printing "Cache held stable" here would fabricate a
+    # positive verdict on data we admit we cannot judge — the same honesty
+    # violation the v0.8.0 fix-compare-fabricates-recovery-on-empty-ledger
+    # closed for the dual-ledger compare path (it guarded on
+    # `total_ideal == 0`). total_ideal == 0 is the same discriminator here: a
+    # JUDGED entry always has cost_ideal = prompt_tokens * hit_rate > 0
+    # (derive_tier returns UNKNOWN when prompt_tokens <= 0), so total_ideal == 0
+    # holds exactly when there are zero judged (HIT/PARTIAL/MISS) entries.
+    # Emit an honest hint instead (fix
+    # fix-headline-fabricates-stable-on-all-unknown-ledger).
+    if total_ideal == 0:
+        body = Text(
+            "No judged cache requests — DeepSeek did not surface the "
+            "cache-hit/miss fields for any request in this run, so dscache "
+            "cannot report a verdict. Wrap your client with dscache.wrap(client) "
+            "and run your agent loop (DeepSeek must report "
+            "prompt_cache_hit_tokens / prompt_cache_miss_tokens) to see "
+            "HIT/PARTIAL/MISS.",
+            style="yellow",
+        )
+        return Panel(body, title="headline", border_style="yellow")
+
     if wasted > 0 and busted > 0:
         body = Text.assemble(
             ("This run busted the cache ", ""),
