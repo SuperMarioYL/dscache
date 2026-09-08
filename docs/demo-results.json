@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "source_revision": "4ac06f7892245a89bd4ae44d09bbb14f6543dc16",
+  "source_revision": "c696def2fbd5906adc0c304f86b8b36863c6a8d2",
   "scope": "Three explicit synthetic ledger rows demonstrate HIT, MISS and UNKNOWN tiers; an identical-prefix miss is not attributed to a client prefix change. No live cache telemetry or cost savings.",
   "steps": [
     {
