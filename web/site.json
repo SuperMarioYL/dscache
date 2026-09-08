@@ -1,104 +1,216 @@
 {
-  "schema": 1,
+  "schema": 3,
   "name": "dscache",
   "github": "https://github.com/SuperMarioYL/dscache",
   "host": "dscache.lei6393.com",
-  "lang": { "primary": "zh", "toggle": true },
-  "accent": ["#059669"],
+  "palette": "auto",
+  "lang": {
+    "primary": "en",
+    "toggle": true
+  },
+  "meta": {
+    "visual_style": "neon-particle",
+    "demo_source": "docs/demo-results.json"
+  },
   "hero": {
-    "eyebrow": {
-      "zh": "回放你的请求日志 · 打爆的前缀看得见 · 浪费的 ¥ 对得上账单 · 改完一键对账",
-      "en": "Replay your request log · See which prefix busted · Wasted ¥ reconciles with your bill · One-command before/after"
-    },
     "headline": {
-      "zh": "你的 DeepSeek Agent 每轮循环都在偷偷多花钱\n一段被打爆的前缀，就把整段缓存折扣悄悄掉回原价",
-      "en": "Your DeepSeek agent silently overpays every loop\n— one busted prefix drops a whole cached segment back to full price"
+      "en": "See cache-hit and cache-miss usage per request.",
+      "zh": "逐请求查看缓存命中与未命中用量。"
     },
     "sub": {
-      "zh": "dscache 回放你的请求日志，读 DeepSeek 真正上报的缓存命中与未命中，逐请求定档 HIT/PARTIAL/MISS，把每一次前缀打爆和它漏掉的人民币变成一张能看、能算、能修的利润表。采样在段边界裁切——不把工具块切成两半，多行消息也指得到真正变了的那一段，重排建议也据此告诉你该钉哪一段；打爆只归因到真正命中过的前缀，绝不甩锅给 MISS，冷启动浪费了 ¥ 也不会挂一个自相矛盾的「打爆 0×」；浪费的 ¥ 既不多记也不少记，两边都对得上账单；改完用 dscache report --compare baseline.jsonl 一张面板看到省回了多少，没得比的时候也不会凭空造一张假面板。给跑 DeepSeek Agent 循环、却在账单里找不到那笔超支的人。",
-      "en": "dscache replays your request log, reads the cache hit and miss tokens DeepSeek actually reports, and tiers each request HIT/PARTIAL/MISS — turning every prefix bust and the CNY it leaks into a profit & loss you can read, price, and fix. The sample is cut at segment boundaries — it never slices a tool block in half, a multi-line message still names the segment that actually changed, and the reorder suggestion tells you exactly which segment to pin; a bust is pinned only to a prefix that actually cached, never to a MISS, and a cold-start run that wastes ¥ no longer prints a self-contradictory 'busted 0×' beside it; the wasted CNY is neither overstated nor understated, reconciling with your bill in both directions; and after you fix it, dscache report --compare baseline.jsonl shows the CNY recovered in one panel — and when there's nothing to compare, it won't fabricate one. For anyone running a DeepSeek agent loop who can't find that overspend on their bill."
+      "en": "dscache wraps a compatible client to record reported prompt-cache usage, then profiles the saved ledger into HIT, PARTIAL, MISS or UNKNOWN tiers.",
+      "zh": "dscache 包装兼容客户端以记录返回的 prompt-cache 用量，再把保存账本分类为 HIT、PARTIAL、MISS 或 UNKNOWN。"
     },
-    "command": "dscache report",
-    "cta": { "zh": "开始使用", "en": "Get started" },
-    "ctaGithub": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
+    "href": "#quickstart"
   },
   "advantages": [
     {
-      "title": { "zh": "打爆指得到真正变了的那一段，建议也点名该钉哪儿", "en": "A bust names the segment that changed — and the suggestion tells you exactly what to pin" },
-      "body": {
-        "zh": "前缀指纹的字符预算以前只在消息循环里管，最后再来一刀截断——工具列表占满预算的编码 Agent，采样正好停在一个工具块中间，段级归因拿到一截残段；而消息内容以前是原文嵌进指纹的，一段带换行的系统提示（编码 Agent 的常态）会被切碎成一串 segment[K] 残段，打爆报告只报一个无意义的稳定段，指不到真正变了的那条消息。现在预算跨所有段（工具、工具选择、响应格式、消息）增量推进，会溢出剩余预算的段直接不追加，没有任何段被从中间截断；消息内容也改成和工具一样的序列化方式，换行被转义成干净的段分隔符，发散的那一段会真正点名是哪条消息，而不是 segment[K]。而重排建议也据此点名该钉的那一段——是哪条用户消息、还是哪个工具块——不再笼统地说「钉住系统提示」，让你改的正是真正变了的地方。",
-        "en": "The prefix-fingerprint char budget used to be enforced only inside the messages loop, then a final truncating slice — for a coding agent whose tool list eats the whole budget, the sample landed mid-tool and segment attribution got a stub; and message content was embedded raw, so a multi-line system prompt (the coding-agent norm) was shattered into a string of segment[K] stubs and a bust reported a meaningless stable segment instead of naming the message that changed. The budget now advances incrementally across every segment (tools, tool_choice, response_format, messages) — a segment that would overflow the remaining budget is never appended, so no segment is ever cut in half; and message content is serialized the same way tools already were, so a newline becomes a clean segment separator and the diverging segment names the actual message, not segment[K]. And the reorder suggestion now names that exact segment to pin — which user message, or which tool block — instead of a generic 'pin the system prompt', so you fix what actually changed."
+      "title": {
+        "en": "Keep usage splits",
+        "zh": "保留用量拆分"
       },
-      "chips": [
-        "› 段边界增量裁切",
-        "› 多行消息不再碎成残段",
-        "› 指得到变了的那条消息",
-        "› 建议点名该钉的那一段"
-      ]
+      "body": {
+        "en": "Cached and missed prompt tokens are separate fields.",
+        "zh": "缓存与未缓存 prompt token 分别记录。"
+      }
     },
     {
-      "title": { "zh": "理想花费按完整 prompt 算，不多记也不少记冤枉钱", "en": "Ideal cost uses the full prompt — no phantom money, no phantom savings" },
-      "body": {
-        "zh": "反事实假设是「整段 prompt 当初都命中缓存」，而整段 prompt 就是 DeepSeek 上报的整段长度。文档说它等于命中加未命中，但实际上报的拆分并不总一致——两者之和小于整段长度时，旧理想值被低估，头条就夸大你浪费的 ¥，凭空造出账单上对不上的钱；而实际花费以前只按命中加未命中计价，那段对不上的缺口成了免费白送，一次未命中反而能算得比理想还便宜，账面上凭空「省下」一笔不存在的钱。现在理想值直接用整段 prompt 长度，实际花费把缺口也按未命中价计进去——拆分一致时行为不变，不一致时既不凭空多记、也不凭空少记，浪费的 ¥ 两边都对得上账单。",
-        "en": "The counterfactual is 'the entire prompt had stayed cached', and the entire prompt is the full length DeepSeek reports. Docs say it equals cached plus miss, but the surfaced split isn't always consistent — when the two sum to less than the full length, the old ideal was understated and the headline overstated your wasted ¥, fabricating money you couldn't reconcile against your bill; and the actual cost used to price only cached plus miss, so the unaccounted gap was free, and a cache MISS could price out cheaper than ideal, fabricating 'savings' that don't exist. The ideal now uses the full prompt length directly, and the actual cost prices that gap at the miss rate too — behavior is unchanged when the split is consistent, and when it isn't there's neither phantom money nor phantom savings, so the wasted ¥ reconciles with your bill in both directions."
+      "title": {
+        "en": "Retain unknown states",
+        "zh": "保留未知状态"
       },
-      "chips": [
-        "› 理想值用完整 prompt",
-        "› 未命中不再显示负浪费",
-        "› 浪费的 ¥ 对得上账单"
-      ]
+      "body": {
+        "en": "Missing fields do not become a fabricated cache hit.",
+        "zh": "缺失字段不会变成虚构缓存命中。"
+      }
     },
     {
-      "title": { "zh": "打爆只归因到真正命中过的前缀，头条也不报假的打爆次数", "en": "A bust is pinned to a prefix that actually cached — and the headline never fakes a bust count" },
-      "body": {
-        "zh": "一个 MISS 本就没缓存过，它既不该当一个「稳定前缀」的主人，也不该当后面请求打爆时回退的参照——可旧逻辑两样都让它干了：先把它注册成主人，于是后面一条采样头相同的请求（也是 MISS）就被对一个不稳定的主人判了打爆；又让回退游标在它身上推进，于是一轮还没命中过任何前缀的冷启动里，后面一条换了前缀的 MISS 会被对到前一条 MISS，凭空多记一次打爆，重排建议还让你去钉一个自己都不缓存的前缀。现在只有 HIT/PARTIAL 才注册为主人和游标参照——打爆指向的永远是真正缓存过的那一条，连冷启动整轮没命中过的情况也不再虚报打爆，建议也就不会再指错。而头条也分清两件事——「打爆 N×」是客户端前缀真的对某条命中过的前缀发生了发散；「浪费的 ¥」是只要有未命中就会产生。冷启动整轮没命中时，哪怕确实浪费了 ¥，头条也只报那笔浪费，绝不旁边挂一个自相矛盾的「打爆 0×」。",
-        "en": "A MISS never cached, so it's neither a rightful owner of a 'stable' prefix NOR the fallback reference a later bust resolves to — yet the old logic let it be both: it registered MISSes as owners, so a later request with the same sampled head (also a MISS) was busted against an unstable owner; and it advanced the fallback cursor through a MISS, so on a cold-start run where nothing had cached yet, a later different-prefix MISS was pinned to the prior MISS, fabricating a bust, and the reorder suggestion told you to pin to a prefix that itself didn't cache. Now only HIT/PARTIAL entries register as owners AND as the fallback reference — a bust always points back to a request that actually cached, and even a cold-start run that never landed a hit reports zero busts (nothing cached, nothing to have diverged from), so the suggestion never points you wrong. And the headline keeps the two apart — 'busted N×' means a client-side prefix actually diverged from a prior cached prefix; 'wasted ¥' accrues from any miss. On a cold-start run that never landed a hit, even when it does waste ¥, the headline reports only that waste — never a self-contradictory 'busted 0×' beside it."
+      "title": {
+        "en": "Suggest without rewriting",
+        "zh": "建议而不改写"
       },
-      "chips": [
-        "› 只 HIT/PARTIAL 当主人",
-        "› MISS 不当回退参照",
-        "› 冷启动不虚报打爆",
-        "› 头条不挂假的打爆次数"
-      ]
+      "body": {
+        "en": "Reorder analysis leaves the request unchanged.",
+        "zh": "重排分析不修改请求。"
+      }
+    }
+  ],
+  "demo": {
+    "title": {
+      "en": "Run it on a complete example",
+      "zh": "运行完整示例"
+    },
+    "note": {
+      "en": "Profile three explicit rows: a high-hit request, an identical-prefix miss, and a request without cache-split data.",
+      "zh": "分析三条明确记录：高命中请求、相同前缀未命中、缺少缓存拆分的请求。"
+    },
+    "source": "https://github.com/SuperMarioYL/dscache/blob/main/docs/demo-results.json",
+    "steps": [
+      {
+        "label": "Recorded run",
+        "body": "Three explicit synthetic ledger rows demonstrate HIT, MISS and UNKNOWN tiers; an identical-prefix miss is not attributed to a client prefix change. No live cache telemetry or cost savings.",
+        "command": ".venv/bin/python examples/presentation-demo.py",
+        "output": "{\"request\": \"one\", \"tier\": \"HIT\", \"cached\": 95, \"miss\": 5, \"busted_against\": null}\n{\"request\": \"two\", \"tier\": \"MISS\", \"cached\": 5, \"miss\": 95, \"busted_against\": \"one\"}\n{\"request\": \"three\", \"tier\": \"UNKNOWN\", \"cached\": null, \"miss\": null, \"busted_against\": null}",
+        "image": "/assets/presentation/demo-0-light.svg",
+        "imageDark": "/assets/presentation/demo-0-dark.svg"
+      }
+    ]
+  },
+  "quickstart": {
+    "title": {
+      "en": "Try it locally",
+      "zh": "本地上手"
+    },
+    "body": {
+      "en": "Profile three explicit rows: a high-hit request, an identical-prefix miss, and a request without cache-split data.",
+      "zh": "分析三条明确记录：高命中请求、相同前缀未命中、缺少缓存拆分的请求。"
+    },
+    "steps": [
+      {
+        "title": {
+          "en": "Install from source",
+          "zh": "从源码安装"
+        },
+        "code": "git clone https://github.com/SuperMarioYL/dscache.git\ncd dscache\nuv venv .venv\nuv pip install --python .venv/bin/python -e .\nsource .venv/bin/activate"
+      },
+      {
+        "title": {
+          "en": "Run the included example",
+          "zh": "运行随仓示例"
+        },
+        "code": ".venv/bin/python examples/presentation-demo.py"
+      }
+    ]
+  },
+  "limitations": [
+    {
+      "en": "An identical prefix can miss for server-side reasons. The profiler does not treat every cache miss as proof of a client mutation.",
+      "zh": "相同前缀也可能因服务器原因未命中，分析器不会将每次未命中都当作客户端变化证明。"
     },
     {
-      "title": { "zh": "改完一键对账：省回了多少打爆、多少 ¥", "en": "One-command before/after: busts recovered, CNY recovered" },
-      "body": {
-        "zh": "跑一轮 Agent 循环，照重排建议改完前缀，再跑一轮，然后 dscache report --compare baseline.jsonl 一张面板看到省回的打爆次数、省回的 ¥、成本比下降。这是那张可分享的「前后账单」对比，现在一条命令。诚实保留：面板写的是「省回」不是「省下」——dscache 没法证明你真的钉住了前缀（你可能改了 prompt 或重跑），它只报告当前账本里被判定为打爆的请求比基线少浪费了多少 ¥。而当某一侧还没有可判定的请求（空账本或全是 UNKNOWN），它不会凭空造一张「省回 N 次、省回 ¥X」的面板——它会直接告诉你先把两边都跑起来再比，绝不拿一张空账本糊弄出假的省回。",
-        "en": "Run your agent loop, apply the reorder suggestion to fix the prefix, re-run, then dscache report --compare baseline.jsonl — one panel shows the recovered busts, recovered ¥, and cost-ratio drop. It's the shareable before/after-bill writeup, now one command. Honesty-preserving: the panel says 'recovered', not 'saved' — dscache can't prove you pinned the prefix (you may have changed the prompt or re-run); it reports only that the judged requests in the current ledger wasted less ¥ than the baseline. And when one side has no judged requests yet (an empty ledger or all-UNKNOWN), it won't fabricate a 'recovered N busts, ¥X' panel — it tells you to run both sides first, never dressing up an empty ledger as a fake recovery."
-      },
-      "chips": [
-        "› dscache report --compare",
-        "› 省回打爆 / 省回 ¥",
-        "› 写省回 不写省下",
-        "› 没得比就不造假的省回"
-      ]
+      "en": "Price calculations use repository rate constants and an all-cached counterfactual. They are estimates, not a current provider bill or guaranteed recoverable savings.",
+      "zh": "价格计算使用仓库费率常量与全缓存反事实，是估计，不是当前账单或保证可追回的节省。"
+    },
+    {
+      "en": "UNKNOWN indicates missing cache-split fields. Prefix fingerprinting covers a limited leading sample and is not full-request equivalence.",
+      "zh": "UNKNOWN 表示缓存拆分字段缺失；前缀指纹只覆盖有限前导样本，不代表完整请求等价。"
     }
   ],
   "scene": {
-    "kind": "hub-nodes",
-    "nodes": ["注入的时间戳", "重排的工具列表", "掉回原价", "对不上的 ¥"]
+    "kind": "neon-graph",
+    "fallback": "/assets/presentation/scene-dark.svg",
+    "fallbackLight": "/assets/presentation/scene-light.svg"
   },
-  "cta": {
-    "headline": {
-      "zh": "两行代码，把被打爆的缓存折扣拿回来",
-      "en": "Two lines of code, recover the cache discount you busted"
+  "story": {
+    "intro": {
+      "title": {
+        "en": "A concrete task",
+        "zh": "从实际任务出发"
+      },
+      "body": {
+        "en": "A total prompt count can hide changes in the cached-input share. Keeping the split per request helps investigate a regression without assuming every miss was caused by a prompt edit.",
+        "zh": "总 prompt 数量可能掩盖缓存输入占比变化。逐请求保留拆分，有助于调查回退，而不把每次未命中都归因于 prompt 编辑。"
+      }
     },
-    "sub": {
-      "zh": "开源、Apache-2.0、无付费墙。本地账本，不挂后台，不联网取价。给 DeepSeek Agent 装一张 prefix-cache 利润表这件事，永不收费。",
-      "en": "Open source, Apache-2.0, no paywall. Local ledger, no background process, no price fetched over the network. The act of putting a prefix-cache P&L on your DeepSeek agent is never gated."
-    },
-    "button": { "zh": "在 GitHub 上开始", "en": "Get started on GitHub" }
+    "sections": [
+      {
+        "title": {
+          "en": "Follow the operation",
+          "zh": "处理过程"
+        },
+        "body": {
+          "en": "The wrapper records usage fields and prefix metadata locally. profile derives tiers and prefix fingerprints, then relates changed-prefix misses to a prior reference. report renders the ledger; reorder offers suggestions without rewriting requests.",
+          "zh": "包装器在本地记录用量字段与前缀元数据。profile 计算档位和前缀指纹，再把前缀变化的未命中关联到前一参考。report 渲染账本，reorder 提供建议而不改写请求。"
+        },
+        "image": {
+          "light": "/assets/presentation/process-light.svg",
+          "dark": "/assets/presentation/process-dark.svg",
+          "alt": {
+            "en": "Follow the operation",
+            "zh": "处理过程"
+          }
+        }
+      },
+      {
+        "title": {
+          "en": "How dscache works",
+          "zh": "dscache 的工作方式"
+        },
+        "body": {
+          "en": "The wrapper records usage fields and prefix metadata locally. profile derives tiers and prefix fingerprints, then relates changed-prefix misses to a prior reference. report renders the ledger; reorder offers suggestions without rewriting requests.",
+          "zh": "包装器在本地记录用量字段与前缀元数据。profile 计算档位和前缀指纹，再把前缀变化的未命中关联到前一参考。report 渲染账本，reorder 提供建议而不改写请求。"
+        },
+        "image": {
+          "light": "/assets/presentation/architecture-light.svg",
+          "dark": "/assets/presentation/architecture-dark.svg",
+          "alt": {
+            "en": "How dscache works",
+            "zh": "dscache 的工作方式"
+          }
+        }
+      },
+      {
+        "title": {
+          "en": "Connect the pieces",
+          "zh": "输入与输出"
+        },
+        "body": {
+          "en": "The following routes are implemented in the source. Choose the input that matches your task and keep the resulting artifact with your project.",
+          "zh": "以下路径已有源码实现。按任务选择输入，并把生成的结果与项目一起保存。"
+        },
+        "image": {
+          "light": "/assets/presentation/integrations-light.svg",
+          "dark": "/assets/presentation/integrations-dark.svg",
+          "alt": {
+            "en": "Connect the pieces",
+            "zh": "输入与输出"
+          }
+        }
+      }
+    ],
+    "details": [
+      {
+        "title": {
+          "en": "Configuration",
+          "zh": "配置"
+        },
+        "body": {
+          "en": "wrap(client) delegates actual model calls to your existing client and writes the local ledger. --ledger/-l selects the report input; the default is .dscache/ledger.jsonl. Report thresholds classify at least 90% cached as HIT and at most 10% as MISS.",
+          "zh": "wrap(client) 将真实模型调用委托给已有客户端并写本地账本。--ledger/-l 指定报告输入，默认 .dscache/ledger.jsonl；缓存占比至少 90% 归为 HIT，至多 10% 归为 MISS。"
+        }
+      },
+      {
+        "title": {
+          "en": "Further use",
+          "zh": "进一步使用"
+        },
+        "body": {
+          "en": "The CLI exposes the following operations. Commands after the example use your own paths or identifiers.",
+          "zh": "CLI 提供以下操作。示例之外的命令需要替换成你的文件路径或标识。"
+        },
+        "code": "# Fake-client ledger example, no API key:\npython examples/quickstart.py\ndscache report\ndscache suggest\ndscache report --ledger .dscache/ledger.jsonl"
+      }
+    ]
   },
-  "footer": {
-    "tag": {
-      "zh": "给 DeepSeek Agent 装的 prefix-cache 利润表",
-      "en": "The prefix-cache profit & loss for your DeepSeek agent"
-    }
-  },
-  "meta": {
-    "content_version": "v0.9.0",
-    "generated_at": "2026-09-08T03:30:00Z",
-    "web_factory_ref": "v1.1"
-  }
+  "content_version": "v0.9.0"
 }

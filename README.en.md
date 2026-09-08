@@ -1,184 +1,129 @@
-<div align="right">
+[简体中文](./README.md) · [Website](https://dscache.lei6393.com) · [GitHub](https://github.com/SuperMarioYL/dscache)
 
-**English** | [简体中文](./README.md)
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/hero-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/hero-dark.svg">
+  <img src="./assets/presentation/hero-light.svg" width="960" alt="Hero diagram">
+</picture>
 
-</div>
+# dscache
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg">
-    <img src="./assets/hero-light.svg" width="880" alt="dscache — DeepSeek prefix-cache profit & loss" />
-  </picture>
-</p>
+**See cache-hit and cache-miss usage per request.**
 
-<p align="center"><sub>dscache is the prefix-cache profit-and-loss layer that recovers DeepSeek cache discounts for <b>Coding Agent</b> developers.</sub></p>
+dscache wraps a compatible client to record reported prompt-cache usage, then profiles the saved ledger into HIT, PARTIAL, MISS or UNKNOWN tiers.
 
-<p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="license" /></a>
-  <img src="https://img.shields.io/badge/release-WIP-orange.svg" alt="release" />
-  <a href="https://github.com/SuperMarioYL/dscache/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-ci.yml-brightgreen.svg" alt="ci" /></a>
-  <img src="https://img.shields.io/badge/python-3.12-3776AB.svg?logo=python&logoColor=white" alt="python" />
-  <img src="https://img.shields.io/badge/DeepSeek-cache--tier-7c3aed.svg" alt="deepseek" />
-  <img src="https://img.shields.io/badge/Coding%20Agent-ready-14b8a6.svg" alt="coding-agent" />
-</p>
+v0.9.0 corrects reports and suggestions for all-UNKNOWN ledgers and ledgers without prefix-bust records, avoiding definite cache-loss claims when the evidence is absent.
 
-> **Your DeepSeek agent quietly overpays on every loop — one reshuffled prefix and the whole context-cache discount drops from the cached-input price back to full price, and nothing in your tooling tells you. dscache turns that into a visible, priced, fixable profit-and-loss sheet in two lines of code.**
+## Why use it
 
-<h2><img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Architecture</h2>
+A total prompt count can hide changes in the cached-input share. Keeping the split per request helps investigate a regression without assuming every miss was caused by a prompt edit.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
-    <img src="./assets/atlas-light.svg" width="880" alt="Your agent code calls a transparent wrapper that reads DeepSeek cache usage and appends to a local ledger; the profiler classifies each request HIT/PARTIAL/MISS, fingerprints the prefix and prices it at two tiers, then feeds the report (P&L + headline) and the reorder suggester (worst bust)">
-  </picture>
-</p>
+- **Keep usage splits** — Cached and missed prompt tokens are separate fields.
+- **Retain unknown states** — Missing fields do not become a fabricated cache hit.
+- **Suggest without rewriting** — Reorder analysis leaves the request unchanged.
 
-A single Python package, one process — no daemon, no server, no network calls of our own. Data flow: your code → `wrapper` (pure pass-through, reads `prompt_cache_hit/miss_tokens`) → `.dscache/ledger.jsonl` → `profiler` (tier + prefix fingerprint + two-tier pricing) → (`report` prints the P&L | `reorder` prints a fix) → terminal.
+## Architecture
 
-## Table of Contents
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/architecture-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/architecture-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/architecture-dark.svg">
+  <img src="./assets/presentation/architecture-light.svg" width="960" alt="Architecture diagram">
+</picture>
 
-- [Why this exists](#why-this-exists)
-- [Install & Quickstart](#install--quickstart)
-- [Usage](#usage)
-- [Demo](#demo)
-- [vs DeepSeek-Reasonix](#vs-deepseek-reasonix)
-- [Configuration](#configuration)
-- [Pricing / Team plan](#pricing--team-plan)
-- [Roadmap](#roadmap)
-- [License & Contributing](#license--contributing)
+The wrapper records usage fields and prefix metadata locally. profile derives tiers and prefix fingerprints, then relates changed-prefix misses to a prior reference. report renders the ledger; reorder offers suggestions without rewriting requests.
 
-## Why this exists
+| Component | Responsibility |
+| --- | --- |
+| `Compatible client` | src/dscache/wrapper.py |
+| `Local ledger` | JSONL usage records |
+| `Cache profiler` | src/dscache/profiler.py |
+| `Report / suggestions` | report.py; reorder.py |
 
-Generic LLM cost dashboards (Helicone / Langfuse) count tokens at OpenAI pricing semantics and **have no model of DeepSeek's two-tier (cache-hit vs cache-miss) context-cache pricing**, so they cannot tell whether a request landed in the cheaper cached-input tier, and they cannot detect the *prefix-bust event* — the moment a prefix change silently invalidated the cache. That cost lives inside agent loops: the same long prefix repeats hundreds of times, and a single injected timestamp or reordered tool list drops you from the discount tier back to full price. dscache reads DeepSeek's `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` and turns an invisible, recurring overspend into a measured, controllable line item.
+## Install and quickstart
 
-## Install & Quickstart
-
-Three commands from a cold clone to your first P&L sheet:
+Build with the version declared in the repository manifest. Run the example from the repository root.
 
 ```bash
-pip install dscache              # < 20s
-dscache demo                     # write a sample ledger (no API key needed) and print the P&L
-dscache suggest                  # see the worst bust + a reorder suggestion
+git clone https://github.com/SuperMarioYL/dscache.git
+cd dscache
+uv venv .venv
+uv pip install --python .venv/bin/python -e .
+source .venv/bin/activate
 ```
 
-To instrument your own code, change two lines:
-
-```python
-import dscache
-from openai import OpenAI
-
-client = dscache.wrap(OpenAI(base_url="https://api.deepseek.com", api_key="sk-..."))
-# run your agent loop as usual — dscache transparently records each response's
-# cache usage to .dscache/ledger.jsonl
-```
-
-Then run `dscache report` in your terminal.
-
-<details>
-<summary>sample output</summary>
-
-```
-                    dscache — prefix-cache profit & loss
-┏━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━━━┓
-┃ # ┃ request           ┃ tier ┃ prompt ┃ cached ┃ miss ┃    cost ┃  wasted ┃
-┡━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━━━┩
-│ 1 │ chatcmpl-demo-000 │ HIT  │   4200 │   4120 │   80 │ ¥0.0022 │       — │
-│ 4 │ chatcmpl-demo-003 │ MISS │   4200 │    120 │ 4080 │ ¥0.0082 │ ¥0.0061 │
-└───┴───────────────────┴──────┴────────┴────────┴──────┴─────────┴─────────┘
-╭────────────────────────────────── headline ──────────────────────────────────╮
-│ This run busted the cache 1× and cost 1.53× what it should — ¥0.0067 wasted. │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-
-</details>
-
-<h2><img src="https://api.iconify.design/tabler:terminal-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Usage</h2>
-
-Three commands, three workflows. Full script in [`examples/`](./examples/quickstart.py).
+Profile three explicit rows: a high-hit request, an identical-prefix miss, and a request without cache-split data.
 
 ```bash
-# 1) see which tier each request landed in, and how much this run wasted
+.venv/bin/python examples/presentation-demo.py
+```
+
+## Recorded demo
+
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/process-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/process-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/process-dark.svg">
+  <img src="./assets/presentation/process-light.svg" width="960" alt="Process diagram">
+</picture>
+
+The three rows classify as HIT, MISS and UNKNOWN; the identical-prefix miss is not linked to a prefix mutation.
+
+```text
+{"request": "one", "tier": "HIT", "cached": 95, "miss": 5, "busted_against": null}
+{"request": "two", "tier": "MISS", "cached": 5, "miss": 95, "busted_against": "one"}
+{"request": "three", "tier": "UNKNOWN", "cached": null, "miss": null, "busted_against": null}
+```
+
+The complete command and output are recorded in [docs/demo-results.json](./docs/demo-results.json). Inputs and reproduction code are included in the repository.
+
+![Existing terminal recording](./assets/demo.gif)
+
+The existing recording is retained for context; the text example above documents the reproducible scenario.
+
+## Usage
+
+The CLI exposes the following operations. Commands after the example use your own paths or identifiers.
+
+```bash
+# Fake-client ledger example, no API key:
+python examples/quickstart.py
 dscache report
-
-# 2) get a prefix-reorder suggestion for the worst bust (a suggestion — it
-#    never mutates your request in-flight)
 dscache suggest
-
-# 3) point at a specific ledger (default .dscache/ledger.jsonl)
-dscache report --ledger ./traces/run-42.jsonl
+dscache report --ledger .dscache/ledger.jsonl
 ```
-
-Library API (the two-line integration):
-
-```python
-client = dscache.wrap(your_deepseek_client)          # transparent proxy, returns the response unchanged
-entries = dscache.profile(dscache.load_ledger(path)) # or get structured ledger entries directly
-```
-
-<h2><img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo</h2>
-
-The full script lives in [`docs/demo.tape`](./docs/demo.tape) (vhs script, rendered to `assets/demo.gif` on tag by CI).
-
-![demo](assets/demo.gif)
-
-> The GIF is rendered and committed by `.github/workflows/demo.yml` on the first `v*` tag.
-
-## vs DeepSeek-Reasonix
-
-[esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) (23k★) baked prefix-cache stability into one concrete coding agent — which is itself proof the pain is real. But it **hard-codes the stability logic inside a product**; it is not a reusable measurement/optimizer primitive you can attach to *your own* pipeline. Honestly, Reasonix is the more complete experience at "just leave it running"; dscache fills the other slot — reusable, embeddable, and showing you every single bust.
-
-| Capability | dscache | DeepSeek-Reasonix |
-| --- | :---: | :---: |
-| Per-request cache hit/bust measurement | ✓ | — |
-| Two-tier (hit/miss) pricing + wasted ¥ | ✓ | — |
-| Attaches to any DeepSeek client (two-line wrap) | ✓ | — |
-| Full out-of-the-box coding-agent experience | — | ✓ |
-| Prefix stability on by default | suggest-only, never mutates | ✓ (baked into the product) |
 
 ## Configuration
 
-v0.1 needs **no config file** and no keys beyond your existing DeepSeek key. Tunables are CLI flags:
+wrap(client) delegates actual model calls to your existing client and writes the local ledger. --ledger/-l selects the report input; the default is .dscache/ledger.jsonl. Report thresholds classify at least 90% cached as HIT and at most 10% as MISS.
 
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `--ledger` / `-l` | path | `.dscache/ledger.jsonl` | Path to the ledger (JSONL) file |
-| `--requests` / `-n` | int | `8` | How many sample requests `dscache demo` writes |
+## Integrations and responsibilities
 
-## Pricing / Team plan
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/integrations-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/integrations-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/integrations-dark.svg">
+  <img src="./assets/presentation/integrations-light.svg" width="960" alt="Integrations diagram">
+</picture>
 
-The v0.1 OSS library is **free forever**, and **no v0.1 feature is paywalled**.
+The following routes are implemented in the source. Choose the input that matches your task and keep the resulting artifact with your project.
 
-For small teams (3–10 devs) running shared DeepSeek-backed coding agents and already feeling the ¥ bill, there's a **hosted team plan**: devs upload their local `ledger.jsonl` traces; the service aggregates cache-discount savings across the team's agents over time, charts the trend, and **alerts on regressions** (e.g. "the team's HIT rate dropped 18% this week — a prompt-template change busted the cache"). It is the same local report, served + persisted + monitored.
+| Route | Implemented role |
+| --- | --- |
+| Client response usage | Cached and missed prompt tokens |
+| JSONL ledger | Local persisted records |
+| Prefix fingerprint | Limited leading text sample |
+| Reports / suggestions | Read-only analysis |
 
-- **Price:** **¥39 / seat / month** (~$5.50), 3-seat team minimum → ~¥117/mo entry; annual gets 2 months free.
-- **Shortest "here's my card" path:** `dscache report --upload` → prints a team-dashboard share URL → 14-day free trial → after the trial, the regression-alert email links to a 2-click Stripe / Alipay checkout. No sales call.
+## Limits and next steps
 
-The price sits below the ¥-saved the report demonstrates, so it justifies itself.
+- An identical prefix can miss for server-side reasons. The profiler does not treat every cache miss as proof of a client mutation.
+- Price calculations use repository rate constants and an all-cached counterfactual. They are estimates, not a current provider bill or guaranteed recoverable savings.
+- UNKNOWN indicates missing cache-split fields. Prefix fingerprinting covers a limited leading sample and is not full-request equivalence.
 
-## Roadmap
+Provider usage compatibility and richer prefix attribution need representative traces. Hosted team dashboards are separate future work.
 
-- [x] **m1 · wrap & profile** — `dscache.wrap()` transparently records the ledger; `dscache report` prints the per-request HIT/PARTIAL/MISS table + two-tier pricing.
-- [ ] **m2 · reorder suggest** — `profiler` computes prefix fingerprints and flags bust events; `dscache suggest` prints a concrete reorder that restores the stable cached span.
-- [ ] **m3 · money report** — sum `cost_actual − cost_ideal` into one shareable line: "busted N×, cost X.Yx ideal, ¥Z wasted".
-- [ ] Hosted team plan (upload aggregation + regression alerts, above).
-- [ ] Cross-model support (Kimi / Qwen / GLM, post-v0.1).
+## License and contributions
 
-## License & Contributing
-
-[Apache-2.0](./LICENSE) licensed. File an issue with a real wasted-money number from one of your runs, or open a PR — especially for new two-tier pricing calibrations and reorder strategies.
-
-## Share this
-
-```
-dscache — the prefix-cache P&L for your DeepSeek Coding Agent. Two lines to see
-every request HIT or MISS the discount, plus a copy-paste reorder fix to win it
-back. https://github.com/SuperMarioYL/dscache
-```
-
-> After pushing, set repo topics: `gh repo edit --add-topic deepseek --add-topic agent --add-topic prefix-cache`
-
-> The before/after-bill headline is mirrored on a static **GitHub Pages product site** (a marketing surface — explicitly not the hosted dashboard or SaaS backend).
-
-<p align="center"><sub><a href="./LICENSE">Apache-2.0</a> © 2026 SuperMarioYL</sub></p>
+See [LICENSE](./LICENSE). When reporting an issue, include a minimal input, the command, and the observed output.

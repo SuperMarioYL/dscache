@@ -1,7 +1,7 @@
 [project]
 name = "dscache"
 version = "0.9.0"
-description = "A prefix-cache profit-and-loss layer for DeepSeek coding agents — see when you bust the context-cache discount and how much it cost."
+description = "Record DeepSeek-style cached/missed prompt usage and analyze request tiers, prefix changes and cost scenarios in a local ledger."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }

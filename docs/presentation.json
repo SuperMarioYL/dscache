@@ -1,0 +1,78 @@
+{
+  "name": "dscache",
+  "tagline": "See cache-hit and cache-miss usage per request.",
+  "architecture": {
+    "title": "How dscache works",
+    "nodes": [
+      {
+        "title": "Compatible client",
+        "detail": "src/dscache/wrapper.py"
+      },
+      {
+        "title": "Local ledger",
+        "detail": "JSONL usage records"
+      },
+      {
+        "title": "Cache profiler",
+        "detail": "src/dscache/profiler.py"
+      },
+      {
+        "title": "Report / suggestions",
+        "detail": "report.py; reorder.py"
+      }
+    ],
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ]
+    ]
+  },
+  "process": {
+    "title": "From input to a useful result",
+    "steps": [
+      {
+        "title": "Read usage",
+        "detail": "Explicit cached/missed counts"
+      },
+      {
+        "title": "Derive tiers",
+        "detail": "HIT, MISS and UNKNOWN"
+      },
+      {
+        "title": "Compare prefix",
+        "detail": "Identical miss has no bust link"
+      }
+    ],
+    "result": "The three rows classify as HIT, MISS and UNKNOWN; the identical-prefix miss is not linked to a prefix mutation."
+  },
+  "integrations": {
+    "title": "Supported input and output routes",
+    "items": [
+      {
+        "title": "Client response usage",
+        "detail": "Cached and missed prompt tokens"
+      },
+      {
+        "title": "JSONL ledger",
+        "detail": "Local persisted records"
+      },
+      {
+        "title": "Prefix fingerprint",
+        "detail": "Limited leading text sample"
+      },
+      {
+        "title": "Reports / suggestions",
+        "detail": "Read-only analysis"
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "mode": "auto",
+  "id": "e65684-e7856a-f6acdf-452ee0d07977",
+  "identity": "https://github.com/supermarioyl/dscache",
+  "primary": "#e65684",
+  "secondary": "#e7856a",
+  "highlight": "#f6acdf",
+  "dark": {
+    "bg": "#0a070e",
+    "panel": "#13101a",
+    "code": "#140d16",
+    "ink": "#fdeef9",
+    "muted": "#b29cb1",
+    "line": "#3a1828",
+    "primary": "#e65684",
+    "secondary": "#e7856a",
+    "highlight": "#f6acdf",
+    "accent": "#e65684",
+    "buttonStart": "#c74a72",
+    "buttonEnd": "#ac634f",
+    "buttonText": "#ffffff"
+  },
+  "light": {
+    "bg": "#fef9fb",
+    "panel": "#fef7f9",
+    "code": "#fdf3f6",
+    "ink": "#271622",
+    "muted": "#725e74",
+    "line": "#f7cbda",
+    "primary": "#bd476d",
+    "secondary": "#a45e4b",
+    "highlight": "#8e6481",
+    "accent": "#bd476d",
+    "buttonStart": "#c74a72",
+    "buttonEnd": "#ac634f",
+    "buttonText": "#ffffff"
+  }
+}
