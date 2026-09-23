@@ -292,16 +292,43 @@ def render_compare_delta(
     baseline_ratio = _ratio(b)
     current_ratio = _ratio(c)
 
+    # Each directional claim must speak with its OWN metric's sign — the
+    # fix-compare-negative-new-bust-count principle (v0.5.0) one metric over.
+    # The verdict is money-driven (recovered_wasted), but the ratio clause must
+    # be driven by the ratio movement itself: the money sign and the ratio sign
+    # are independent (they disagree whenever the two runs' ideal sizes
+    # differ), so a money-recovered run can still have a WORSE ratio and equal
+    # wasted ¥ can still move the ratio. Fabricating "dropped"/"unchanged"
+    # from the money sign contradicts the very numbers the panel prints (fix
+    # fix-compare-ratio-direction-fabricated). Both sides passed the
+    # zero-judged guard above, so total_ideal > 0 and the division is safe.
+    b_ratio_val = b["total_actual"] / b["total_ideal"]
+    c_ratio_val = c["total_actual"] / c["total_ideal"]
+    if c_ratio_val < b_ratio_val:
+        ratio_bits = (
+            ("cost ratio dropped from ", ""),
+            (baseline_ratio, "bold red"),
+            (" to ", ""),
+            (current_ratio, "bold green"),
+        )
+    elif c_ratio_val > b_ratio_val:
+        ratio_bits = (
+            ("cost ratio rose from ", ""),
+            (baseline_ratio, "bold green"),
+            (" to ", ""),
+            (current_ratio, "bold red"),
+        )
+    else:
+        ratio_bits = (("cost ratio held at ", ""), (baseline_ratio, "dim"))
+
     if recovered_wasted > 0:
         body = Text.assemble(
             ("Applying the suggestion recovered ", ""),
             (f"{recovered_busts}", "bold green"),
             (" cache-bust(s) and ", ""),
             (f"{_money(recovered_wasted)}", "bold green"),
-            (" of wasted spend — cost ratio dropped from ", ""),
-            (baseline_ratio, "bold red"),
-            (" to ", ""),
-            (current_ratio, "bold green"),
+            (" of wasted spend — ", ""),
+            *ratio_bits,
             (".", ""),
         )
         border = "green"
@@ -319,13 +346,25 @@ def render_compare_delta(
         )
         border = "red"
     else:
-        body = Text.assemble(
-            ("No change in wasted spend (", ""),
-            (baseline_ratio, "dim"),
-            (" -> ", "dim"),
-            (current_ratio, "dim"),
-            ("). Prefix discount unchanged.", ""),
-        )
+        # Wasted ¥ is unchanged, but the ratio can still have moved (equal
+        # waste over differently-sized runs). Only claim "Prefix discount
+        # unchanged" when the ratio is actually unchanged — otherwise state
+        # the factual movement instead of a flat claim the numbers next to it
+        # contradict (fix fix-compare-ratio-direction-fabricated).
+        if c_ratio_val == b_ratio_val:
+            body = Text.assemble(
+                ("No change in wasted spend (", "dim"),
+                (baseline_ratio, "dim"),
+                (" -> ", "dim"),
+                (current_ratio, "dim"),
+                ("). Prefix discount unchanged.", "dim"),
+            )
+        else:
+            body = Text.assemble(
+                ("No change in wasted spend — ", ""),
+                *ratio_bits,
+                (".", ""),
+            )
         border = "yellow"
 
     caveat = Text(

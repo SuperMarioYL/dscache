@@ -399,3 +399,70 @@ def test_headline_true_cold_start_all_miss_keeps_cold_start_language():
     assert "cold start" in rendered.lower()
 
 
+# --- fix-compare-ratio-direction-fabricated ----------------------------------
+
+
+def test_compare_recovered_branch_does_not_claim_ratio_dropped_when_it_rose():
+    # fix-compare-ratio-direction-fabricated: the RECOVERED verdict is driven
+    # by the money sign (correct), but the ratio clause hard-coded "cost ratio
+    # dropped from X to Y". Money and ratio signs are independent: a big
+    # mostly-cached baseline vs a small miss-heavy current run recovers ¥0.0009
+    # while the ratio ROSE from 1.02x to 3.70x — the old panel claimed it
+    # "dropped", contradicting the very numbers it prints.
+    baseline = profile([
+        {"request_id": "b1", "prompt_tokens": 100000, "cached_tokens": 99000,
+         "miss_tokens": 1000, "prefix_sample": "system:agent\nuser:b1"},
+        {"request_id": "b2", "prompt_tokens": 100000, "cached_tokens": 99500,
+         "miss_tokens": 500, "prefix_sample": "system:agent\nuser:b2"},
+    ])
+    current = profile([
+        {"request_id": "c1", "prompt_tokens": 1000, "cached_tokens": 100,
+         "miss_tokens": 900, "prefix_sample": "system:agent\nuser:c1"},
+    ])
+    rendered = _render_wide(render_compare_delta(baseline, current))
+    # The money-recovered verdict stands...
+    assert "applying the suggestion recovered" in rendered.lower()
+    # ...but the ratio clause speaks with the ratio's own sign: it rose.
+    assert "rose from" in rendered.lower()
+    assert "dropped from" not in rendered.lower()
+
+
+def test_compare_no_change_branch_states_ratio_movement_not_flat_unchanged():
+    # Equal wasted ¥ with different prompt sizes -> the ratio moved (2.50x ->
+    # 1.75x) while wasted did not. The old no-change branch printed "Prefix
+    # discount unchanged." next to the very numbers showing the change.
+    baseline = profile([
+        {"request_id": "b1", "prompt_tokens": 2000, "cached_tokens": 1000,
+         "miss_tokens": 1000, "prefix_sample": "system:agent\nuser:b1"},
+    ])
+    current = profile([
+        {"request_id": "c1", "prompt_tokens": 4000, "cached_tokens": 3000,
+         "miss_tokens": 1000, "prefix_sample": "system:agent\nuser:c1"},
+    ])
+    nums_b = _headline_numbers(baseline)
+    nums_c = _headline_numbers(current)
+    # Sanity: money genuinely unchanged, ratio genuinely moved.
+    assert nums_b["wasted"] == nums_c["wasted"] > Decimal("0")
+    assert (nums_c["total_actual"] / nums_c["total_ideal"]) < (
+        nums_b["total_actual"] / nums_b["total_ideal"]
+    )
+    rendered = _render_wide(render_compare_delta(baseline, current))
+    assert "no change in wasted spend" in rendered.lower()
+    assert "prefix discount unchanged" not in rendered.lower()
+    assert "2.50" in rendered and "1.75" in rendered
+
+
+def test_compare_equal_ratios_still_claims_discount_unchanged():
+    # The one case the flat claim is honest: identical runs, equal wasted ¥,
+    # identical ratio -> "Prefix discount unchanged." stays.
+    records = [
+        {"request_id": "b1", "prompt_tokens": 2000, "cached_tokens": 1000,
+         "miss_tokens": 1000, "prefix_sample": "system:agent\nuser:b1"},
+    ]
+    baseline = profile(records)
+    current = profile([
+        dict(r, request_id="c1") for r in records
+    ])
+    rendered = _render_wide(render_compare_delta(baseline, current))
+    assert "no change in wasted spend" in rendered.lower()
+    assert "prefix discount unchanged" in rendered.lower()
