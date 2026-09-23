@@ -18,9 +18,12 @@ jobs:
       - name: Set up Python
         run: uv python install ${{ matrix.python-version }}
       - name: Install
-        # ubuntu-latest's system interpreter is PEP 668 externally-managed;
-        # without this flag `uv pip install --system` fails with "The
-        # interpreter at /usr is externally managed".
-        run: uv pip install --system --break-system-packages -e ".[dev]"
+        # Install into a uv venv, not the system interpreter: ubuntu-latest's
+        # system Python is PEP 668 externally-managed ("The interpreter at
+        # /usr is externally managed") AND its dist-packages dir is root-owned
+        # (Permission denied), so `--system` installs fail either way.
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
       - name: Test
-        run: pytest -q
+        run: .venv/bin/pytest -q

@@ -12,9 +12,13 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv python install 3.12
       - name: Build wheel + sdist
+        # Build in a uv venv, not the system interpreter: ubuntu-latest's
+        # system Python is PEP 668 externally-managed AND its dist-packages
+        # dir is root-owned, so `--system` installs fail either way.
         run: |
-          uv pip install --system --break-system-packages build
-          python -m build --outdir dist
+          uv venv
+          uv pip install build
+          .venv/bin/python -m build --outdir dist
       - name: Checksums
         run: |
           cd dist
