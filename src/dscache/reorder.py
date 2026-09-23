@@ -112,14 +112,18 @@ def no_bust_note(entries: Sequence[CacheLedgerEntry]) -> tuple[str, bool]:
     ``busted_against`` set, but "no bust" and "your prefix is stable" are
     different claims. The second is fabricated when dscache has no evidence of
     stability — an all-UNKNOWN run (DeepSeek never reported the cache split, so
-    dscache cannot judge hit/miss for any request) or a cold-start run that
-    wasted money with no prior stable prefix to bust against (the v0.6.0/v0.7.0
-    cold-start fixes correctly suppressed the phantom bust, so suggest_reorder
-    is ``None`` even though money was wasted — and the money headline honestly
-    says so). Branch on the judged-requests state via the same
-    :func:`_headline_numbers` the money headline uses, so ``dscache suggest``
-    never contradicts ``dscache report`` for the same ledger (fix
-    fix-suggest-fabricates-stable-on-no-bust).
+    dscache cannot judge hit/miss for any request) or a run that wasted money
+    with no client-side bust (the v0.6.0/v0.7.0 cold-start fixes correctly
+    suppressed the phantom bust, so suggest_reorder is ``None`` even though
+    money was wasted — and the money headline honestly says so). And "wasted
+    with no bust" itself splits in two: a TRUE cold start (no HIT/PARTIAL
+    entries — nothing ever cached) keeps the cold-start explanation, while a
+    warm run with cache hits held its prefix and must not be told "cold start"
+    or advised to re-run after a cache hit it already had (fix
+    fix-cold-start-mislabels-warm-stable-run). Branch on the judged-requests
+    state via the same :func:`_headline_numbers` the money headline uses, so
+    ``dscache suggest`` never contradicts ``dscache report`` for the same
+    ledger.
 
     Returns
     -------
@@ -138,6 +142,24 @@ def no_bust_note(entries: Sequence[CacheLedgerEntry]) -> tuple[str, bool]:
             False,
         )
     if nums["wasted"] > 0:
+        # "Wasted > 0 with no bust" is broader than cold start: cost_ideal is
+        # the all-cached counterfactual, so ANY uncached token produces waste —
+        # including a HIT-tier request's uncached tail (DeepSeek's split is
+        # essentially never 100% on real agent loops). Branch on whether the
+        # run actually established a cached prefix: a TRUE cold start (no
+        # HIT/PARTIAL entries) keeps the cold-start explanation, while a warm
+        # run with cache hits held its prefix — telling it to "re-run after a
+        # cache hit" fabricates a state the run already reached and contradicts
+        # the run's own HIT table (fix fix-cold-start-mislabels-warm-stable-run).
+        has_cached = any(e.tier in (Tier.HIT, Tier.PARTIAL) for e in entries)
+        if has_cached:
+            return (
+                f"No client-side prefix-bust detected — the prefix held stable "
+                f"on this run's cached requests. ¥{nums['wasted']:.4f} wasted "
+                f"is the uncached tokens of {nums['wasting']} request(s), not "
+                f"a bust.",
+                False,
+            )
         return (
             f"No client-side prefix-bust detected against a prior stable prefix "
             f"(cold start) — but this run wasted ¥{nums['wasted']:.4f}. Re-run "

@@ -183,3 +183,28 @@ def test_no_bust_note_zero_waste_run_is_stable():
     note, stable = no_bust_note(entries)
     assert stable is True
     assert "your prefix is stable" in note
+
+
+def test_no_bust_note_warm_run_with_cache_hits_is_not_cold_start():
+    # fix-cold-start-mislabels-warm-stable-run: no_bust_note's `wasted > 0`
+    # branch hard-coded the cold-start explanation, but a warm, bust-free run
+    # with real cache hits (each HIT keeping its uncached tail) also has
+    # wasted > 0 — the old note fabricated "cold start" and advised "re-run
+    # after a cache hit" the run had already done, contradicting the same
+    # run's HIT table.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 4200, "cached_tokens": 0,
+         "miss_tokens": 4200, "prefix_sample": "system:agent\nuser:one"},
+        {"request_id": "r2", "prompt_tokens": 4200, "cached_tokens": 4120,
+         "miss_tokens": 80, "prefix_sample": "system:agent\nuser:one\nuser:two"},
+        {"request_id": "r3", "prompt_tokens": 4200, "cached_tokens": 4140,
+         "miss_tokens": 60, "prefix_sample": "system:agent\nuser:one\nuser:three"},
+    ]
+    entries = profile(records)
+    assert suggest_reorder(entries) is None  # no bust to suggest for
+    note, stable = no_bust_note(entries)
+    # The waste is real (not genuinely stable), but it is NOT a cold start.
+    assert stable is False
+    assert "cold start" not in note.lower()
+    assert "re-run after a cache hit" not in note.lower()
+    assert "wasted" in note.lower()

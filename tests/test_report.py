@@ -315,3 +315,87 @@ def test_compare_delta_recovered_branch_bust_count_never_negative():
     # Clamped, bust-direction-driven count: "0 cache-bust(s)", not "-4".
     assert "0 cache-bust" in rendered.lower()
     assert "-4 cache-bust" not in rendered.lower()
+
+
+# --- fix-cold-start-mislabels-warm-stable-run --------------------------------
+
+
+def _warm_ledger():
+    # A warm, bust-free run: r1 is the genuine cold first request, then the
+    # prefix establishes and holds — each later HIT keeps a small uncached tail
+    # (the newest user turn is never cached on first send), so wasted > 0 even
+    # though no client-side prefix-bust exists.
+    return [
+        {"request_id": "r1", "prompt_tokens": 4200, "cached_tokens": 0,
+         "miss_tokens": 4200, "prefix_sample": "system:agent\nuser:one"},
+        {"request_id": "r2", "prompt_tokens": 4200, "cached_tokens": 4120,
+         "miss_tokens": 80, "prefix_sample": "system:agent\nuser:one\nuser:two"},
+        {"request_id": "r3", "prompt_tokens": 4200, "cached_tokens": 4140,
+         "miss_tokens": 60, "prefix_sample": "system:agent\nuser:one\nuser:three"},
+    ]
+
+
+def _render_wide(panel) -> str:
+    # Wide console so multi-word phrases in the panel body are never wrapped
+    # mid-phrase — the assertions below match contiguous phrases.
+    console = Console(width=250, record=True)
+    console.print(panel)
+    return console.export_text()
+
+
+def test_headline_warm_run_with_cache_hits_is_not_labeled_cold_start():
+    # fix-cold-start-mislabels-warm-stable-run: the v0.8.0 cold-start branch
+    # keyed on `wasted > 0 and busted == 0`, but ANY uncached token produces
+    # wasted > 0 (cost_ideal is the all-cached counterfactual) — including a
+    # HIT-tier request's uncached tail. A warm run with two real cache hits
+    # used to print "cold start; re-run after a cache hit to attribute busts"
+    # — a fabricated cold-start explanation plus advice the run already
+    # satisfied, and HIT-tier requests labeled "cache-miss request(s)".
+    entries = profile(_warm_ledger())
+    assert [e.tier for e in entries] == [Tier.MISS, Tier.HIT, Tier.HIT]
+    assert all(e.busted_against is None for e in entries)
+    nums = _headline_numbers(entries)
+    assert nums["wasted"] > Decimal("0")
+    rendered = _render_wide(render_headline(entries))
+    # The waste itself is real and still reported...
+    assert "wasted" in rendered.lower()
+    # ...but the run demonstrably had cache hits: no fabricated cold-start
+    # claim, no advice to re-run after a cache hit, and no "cache-miss
+    # request(s)" label applied to HIT-tier entries.
+    assert "cold start" not in rendered.lower()
+    assert "re-run after a cache hit" not in rendered.lower()
+    assert "cache-miss request" not in rendered.lower()
+
+
+def test_headline_all_hit_run_with_uncached_tail_is_not_labeled_cold_start():
+    # The pure happy path: every request HITs (ratio ~0.98) and the prefix
+    # holds — wasted > 0 comes only from each request's uncached tail. The old
+    # branch called even this run a "cold start".
+    records = [
+        {"request_id": f"r{i}", "prompt_tokens": 4200, "cached_tokens": 4120,
+         "miss_tokens": 80, "prefix_sample": f"system:agent\nuser:task {i}"}
+        for i in range(1, 4)
+    ]
+    entries = profile(records)
+    assert all(e.tier is Tier.HIT for e in entries)
+    assert all(e.busted_against is None for e in entries)
+    rendered = _render_wide(render_headline(entries))
+    assert "wasted" in rendered.lower()
+    assert "cold start" not in rendered.lower()
+
+
+def test_headline_true_cold_start_all_miss_keeps_cold_start_language():
+    # The honest cold-start case is unchanged: a run where nothing ever cached
+    # (no HIT/PARTIAL entries) still reports the cold-start explanation.
+    records = [
+        {"request_id": "r1", "prompt_tokens": 1000, "cached_tokens": 20,
+         "miss_tokens": 980, "prefix_sample": "system:a\nuser:b"},
+    ]
+    entries = profile(records)
+    assert entries[0].tier is Tier.MISS
+    assert all(e.tier is not Tier.HIT and e.tier is not Tier.PARTIAL for e in entries)
+    rendered = _render_wide(render_headline(entries))
+    assert "wasted" in rendered.lower()
+    assert "cold start" in rendered.lower()
+
+

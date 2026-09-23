@@ -136,27 +136,49 @@ def render_headline(entries: Sequence[CacheLedgerEntry]) -> Panel:
         )
         border = "red"
     elif wasted > 0 and busted == 0:
-        # Money was wasted (cache misses) but NO client-side prefix-bust was
-        # detected against a prior stable prefix — e.g. a cold-start run before
-        # any prefix established a hit. The two concepts are different: "busted
-        # N×" means a CLIENT-side prefix divergence against a prior stable
-        # prefix; "wasted ¥" means miss tokens cost money regardless of whether
-        # a prior cached prefix existed to diverge from. The cold-start fixes
+        # Money was wasted but NO client-side prefix-bust was detected against
+        # a prior stable prefix. The two concepts are different: "busted N×"
+        # means a CLIENT-side prefix divergence against a prior stable prefix;
+        # "wasted ¥" means miss tokens cost money regardless of whether a prior
+        # cached prefix existed to diverge from. The cold-start fixes
         # (fix-identical-prefix-miss-false-bust / fix-new-prefix-miss-busts-
         # against-prior-miss) correctly leave busted_against unset here, so
         # busted == 0 while wasted > 0 — printing "busted the cache 0× ...
-        # ¥Z wasted" would be self-contradictory. Report the waste honestly
-        # without the phantom bust count (fix
+        # ¥Z wasted" would be self-contradictory (fix
         # fix-headline-busted-zero-contradicts-wasted-money).
-        body = Text.assemble(
-            ("This run wasted ", ""),
-            (f"{_money(wasted)}", "bold red"),
-            (f" across {wasting} cache-miss request(s) — no prefix-bust "
-             f"against a prior stable prefix was detected (cold start; re-run "
-             f"after a cache hit to attribute busts). Cost ", ""),
-            (ratio_str, "bold red"),
-            (" what it should.", ""),
-        )
+        #
+        # But "wasted > 0" is broader than cold start: cost_ideal is the
+        # all-cached counterfactual, so ANY uncached token produces waste —
+        # including a HIT-tier request's uncached tail (DeepSeek's split is
+        # essentially never 100% on real agent loops). Branch on whether the
+        # run actually established a cached prefix: a TRUE cold start (no
+        # HIT/PARTIAL entries) keeps the cold-start explanation, while a warm
+        # run with cache hits held its prefix — the waste is the run's
+        # uncached tokens, not a cold start and not a bust, and telling a run
+        # with real HITs to "re-run after a cache hit" fabricates a state the
+        # run never had (fix fix-cold-start-mislabels-warm-stable-run).
+        has_cached = any(e.tier in (Tier.HIT, Tier.PARTIAL) for e in entries)
+        if has_cached:
+            body = Text.assemble(
+                ("This run wasted ", ""),
+                (f"{_money(wasted)}", "bold red"),
+                (f" across {wasting} request(s) with uncached tokens — no "
+                 f"client-side prefix-bust was detected (the prefix held on "
+                 f"this run's cached requests; uncached tokens bill at the "
+                 f"miss rate even when the prefix hits). Cost ", ""),
+                (ratio_str, "bold red"),
+                (" what it should.", ""),
+            )
+        else:
+            body = Text.assemble(
+                ("This run wasted ", ""),
+                (f"{_money(wasted)}", "bold red"),
+                (f" across {wasting} cache-miss request(s) — no prefix-bust "
+                 f"against a prior stable prefix was detected (cold start; "
+                 f"re-run after a cache hit to attribute busts). Cost ", ""),
+                (ratio_str, "bold red"),
+                (" what it should.", ""),
+            )
         border = "red"
     else:
         body = Text.assemble(
