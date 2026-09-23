@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.10.0
+
+A continuation of the honesty/correctness-deepening arc (amend-dscache-v0.10.0).
+Two `type:fix` milestones close honesty violations the v0.8.0/v0.9.0 fix
+rounds themselves introduced: a directional or verdict claim that dscache's
+own data contradicts, on the two surfaces that carry the product's core
+promise. No new primitive, no server, no scope drift.
+
+### Fixes
+
+- **A warm, bust-free run is no longer mislabeled a "cold start" — by the
+  money headline or by `dscache suggest`.** The v0.8.0 cold-start branch keyed
+  on `wasted > 0 and busted == 0`, but `cost_ideal` is the all-cached
+  counterfactual, so ANY uncached token produces waste — including a
+  HIT-tier request's uncached tail (a 4200-token prompt with 4120 cached is
+  tier=HIT and still wastes ¥0.00012), and DeepSeek's cache split is
+  essentially never 100% on real agent loops (the newest user turn is never
+  cached on first send). Reproduced: a run with tiers [MISS, HIT, HIT] and
+  zero busts printed "This run wasted ¥0.0064 across 2 cache-miss request(s) —
+  no prefix-bust against a prior stable prefix was detected (cold start; re-run
+  after a cache hit to attribute busts)" — a fabricated cold-start
+  explanation, advice the run already satisfied, and HIT-tier requests labeled
+  "cache-miss request(s)". The fix branches on whether the run established a
+  cached prefix: a true all-MISS cold start keeps the cold-start message
+  verbatim (the existing tests pin it), while a warm run with cache hits
+  reports the waste as what it is — "no client-side prefix-bust was detected
+  (the prefix held on this run's cached requests; uncached tokens bill at the
+  miss rate even when the prefix hits)".
+
+- **`dscache report --compare` no longer fabricates the cost-ratio
+  direction.** The RECOVERED branch hard-coded "cost ratio dropped from X to
+  Y" and the no-change branch hard-coded "Prefix discount unchanged." —
+  directional claims never computed from the ratios. The money sign and the
+  ratio sign are independent: a big mostly-cached baseline vs a small
+  miss-heavy current run recovers ¥0.0009 while the ratio ROSE from 1.02× to
+  3.70× (the old panel claimed it "dropped"), and equal wasted ¥ over
+  differently-sized runs moves the ratio 2.50× → 1.75× (the old panel claimed
+  "Prefix discount unchanged" right next to the numbers showing the change).
+  Each directional claim now speaks with its own metric's sign — the v0.5.0
+  `fix-compare-negative-new-bust-count` principle one metric over. The WORSE
+  branch's neutral "(ratio A -> B)" parenthetical is unchanged.
+
 ## v0.9.0
 
 A continuation of the honesty/correctness-deepening arc (amend-dscache-v0.9.0).

@@ -1,6 +1,6 @@
 [project]
 name = "dscache"
-version = "0.9.0"
+version = "0.10.0"
 description = "Record DeepSeek-style cached/missed prompt usage and analyze request tiers, prefix changes and cost scenarios in a local ledger."
 readme = "README.md"
 requires-python = ">=3.12"
