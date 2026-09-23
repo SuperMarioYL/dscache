@@ -18,6 +18,9 @@ jobs:
       - name: Set up Python
         run: uv python install ${{ matrix.python-version }}
       - name: Install
-        run: uv pip install --system -e ".[dev]"
+        # ubuntu-latest's system interpreter is PEP 668 externally-managed;
+        # without this flag `uv pip install --system` fails with "The
+        # interpreter at /usr is externally managed".
+        run: uv pip install --system --break-system-packages -e ".[dev]"
       - name: Test
         run: pytest -q
